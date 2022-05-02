@@ -353,6 +353,30 @@ impl DbModule for Sqlite {
                     )";
                 let res_audit_table = self.conn.execute(sql_audit_table, params![])?;
                 debug!("metadata table: {}", res_audit_table);
+                let sql_audit_trigger_delete = "\
+                CREATE TRIGGER audit_delete_metadata AFTER DELETE on metadata\
+                BEGIN\
+                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    OLD.size, OLD.atime, OLD.atime_nsec,\
+                    OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec,\
+                    OLD.kind, OLD.mode, OLD.nlink,\
+                    OLD.uid, OLD.gid, OLD.rdev, OLD.flags);\
+                END\
+                ";
+                let res_audit_trigger_delete = self.conn.execute(sql_audit_trigger_delete, params![])?;
+                debug!("metadata table: {}", res_audit_trigger_delete);
+                let sql_audit_trigger_update = "\
+                CREATE TRIGGER audit_update_metadata AFTER UPDATE on metadata\
+                BEGIN\
+                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    OLD.size, OLD.atime, OLD.atime_nsec,\
+                    OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec,\
+                    OLD.kind, OLD.mode, OLD.nlink,\
+                    OLD.uid, OLD.gid, OLD.rdev, OLD.flags);\
+                END\
+                ";
+                let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
+                debug!("metadata table: {}", res_audit_trigger_update);
             }
         }
         {
