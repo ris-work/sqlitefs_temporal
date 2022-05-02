@@ -357,8 +357,9 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_delete_metadata AFTER DELETE on metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
-                    OLD.size, OLD.atime, OLD.atime_nsec, \
+                    OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
                     OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
+                    OLD.crtime, OLD.crtime_nsec, \
                     OLD.kind, OLD.mode, OLD.nlink, \
                     OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
                 END \
@@ -369,8 +370,9 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_update_metadata AFTER UPDATE on metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.size, OLD.atime, OLD.atime_nsec, \
+                    OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
                     OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
+                    OLD.crtime, OLD.crtime_nsec, \
                     OLD.kind, OLD.mode, OLD.nlink, \
                     OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
                 END \
