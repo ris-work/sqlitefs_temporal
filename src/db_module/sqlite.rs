@@ -448,7 +448,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_data AFTER DELETE on data \
                 BEGIN \
-                    INSERT INTO data VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.block_num, OLD.data \
                     ); \
                 END \
