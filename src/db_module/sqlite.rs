@@ -329,6 +329,30 @@ impl DbModule for Sqlite {
                     )";
                 let res = self.conn.execute(sql, params![])?;
                 debug!("metadata table: {}", res);
+                let sql_audit_table = "CREATE TABLE metadata_audit(\
+                    seq integer PRIMARY KEY AUTOINCREMENT,\
+                    timestamp_utc text,\
+                    TG_OP text,\
+                    id integer,\
+                    size int default 0 not null,\
+                    atime text,\
+                    atime_nsec int,\
+                    mtime text,\
+                    mtime_nsec int,\
+                    ctime text,\
+                    ctime_nsec int,\
+                    crtime text,\
+                    crtime_nsec int,\
+                    kind int,\
+                    mode int,\
+                    nlink int default 0 not null,\
+                    uid int default 0,\
+                    gid int default 0,\
+                    rdev int default 0,\
+                    flags int default 0 \
+                    )";
+                let res_audit_table = self.conn.execute(sql_audit_table, params![])?;
+                debug!("metadata table: {}", res_audit_table);
             }
         }
         {
