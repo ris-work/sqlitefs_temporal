@@ -1,3 +1,10 @@
+Copyright (c) RISHIKESHAN <oss@rishikeshan.com>
+This software is tri-licensed under 
+the Mozilla Public License version 2.0 only, incompatible with secondary licenses or 
+the Microsoft Public License or
+the Enhanced MIT license by Wix
+
+OTHER NOTICES:
 The MIT License
 
 Copyright (c) 2020 Naruaki Matsumura

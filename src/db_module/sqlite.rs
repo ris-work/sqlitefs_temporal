@@ -368,6 +368,16 @@ impl DbModule for Sqlite {
                     primary key (parent_id, name) \
                     )";
                 self.conn.execute(sql, params![])?;
+                let sql_audit_table = "CREATE TABLE dentry_audit(\
+                    seq integer PRIMARY KEY AUTOINCREMENT,\
+                    timestamp_utc text,\
+                    TG_OP text,\
+                    parent_id int,\
+                    child_id int,\
+                    file_type int,\
+                    name text\
+                    )";
+                self.conn.execute(sql_audit_table, params![])?;
             }
         }
         {
@@ -381,6 +391,15 @@ impl DbModule for Sqlite {
                     primary key (file_id, block_num) \
                     )";
                 self.conn.execute(sql, params![])?;
+                let sql_audit_table = "CREATE TABLE data_audit(\
+                    seq integer PRIMARY KEY AUTOINCREMENT,\
+                    timestamp_utc text,\
+                    TG_OP text,\
+                    file_id int,\
+                    block_num int,\
+                    data blob\
+                    )";
+                self.conn.execute(sql_audit_table, params![])?;
             }
         }
         {
@@ -394,6 +413,15 @@ impl DbModule for Sqlite {
                     primary key (file_id, name) \
                     )";
                 self.conn.execute(sql, params![])?;
+                let sql_audit_table = "CREATE TABLE xattr_audit(\
+                    seq integer PRIMARY KEY AUTOINCREMENT,\
+                    timestamp_utc text,\
+                    TG_OP text,\
+                    file_id int,\
+                    name text,\
+                    value text\
+                    )";
+                self.conn.execute(sql_audit_table, params![])?;
             }
         }
         {
