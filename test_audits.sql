@@ -1,3 +1,4 @@
+-- Please do not run this script on files with data. This will probably delete the data.
 PRAGMA foreign_keys=ON;
 BEGIN TRANSACTION;
 INSERT INTO metadata VALUES(6,0,'1970-01-01 00:00:00',0,'1970-01-01 00:00:00',0,'1970-01-01 00:00:00',0,'1970-01-01 00:00:00',0,16384,16832,1,0,0,0,0);
