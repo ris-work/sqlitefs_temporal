@@ -489,7 +489,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_xattr AFTER DELETE on xattr \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.name, OLD.value \
                     );\
                 END \
@@ -499,7 +499,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_xattr AFTER UPDATE on xattr FOR EACH ROW \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
+                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
                     OLD.file_id, OLD.name, OLD.value \
                     ); \
                 END";
