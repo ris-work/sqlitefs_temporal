@@ -309,7 +309,7 @@ impl DbModule for Sqlite {
             let row_count: u32 = self.conn.query_row(table_search_sql, params!["metadata"], |row| row.get(0) )?;
             if row_count == 0 {
                 let sql = "CREATE TABLE metadata(\
-                    id integer primary key,\
+                    id integer primary key AUTOINCREMENT,\
                     size int default 0 not null,\
                     atime text,\
                     atime_nsec int,\
@@ -334,7 +334,7 @@ impl DbModule for Sqlite {
                     timestamp_utc text,\
                     TG_OP text,\
                     id integer,\
-                    size int default 0 not null,\
+                    size int default 0,\
                     atime text,\
                     atime_nsec int,\
                     mtime text,\
@@ -345,7 +345,7 @@ impl DbModule for Sqlite {
                     crtime_nsec int,\
                     kind int,\
                     mode int,\
-                    nlink int default 0 not null,\
+                    nlink int default 0,\
                     uid int default 0,\
                     gid int default 0,\
                     rdev int default 0,\
@@ -383,7 +383,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_insert_metadata AFTER INSERT on metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NULL, NULL, NULL, NULL, \
+                    NEW.id, NULL, NULL, NULL, \
                     NULL, NULL, NULL, NULL, \
                     NULL, NULL, \
                     NULL, NULL, NULL, \
@@ -437,11 +437,11 @@ impl DbModule for Sqlite {
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("dentry table: {}", res_audit_trigger_update);
                 let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_update_dentry AFTER INSERT on dentry \
+                CREATE TRIGGER audit_insert_dentry AFTER INSERT on dentry \
                 BEGIN \
                     INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NULL, NULL, NULL, \
-                    NULL); \
+                    NEW.parent_id, NEW.child_id, NEW.file_type, \
+                    NEW.name); \
                 END";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
                 debug!("dentry table: {}", res_audit_trigger_insert);
@@ -490,7 +490,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_insert_data AFTER INSERT on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NULL, NULL, NULL \
+                    NEW.file_id, NULL, NULL \
                     ); \
                 END";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
@@ -540,7 +540,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_insert_xattr AFTER INSERT on xattr FOR EACH ROW \
                 BEGIN \
                     INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NULL, NULL, NULL \
+                    NEW.file_id, NEW.name, NEW.value \
                     ); \
                 END";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
