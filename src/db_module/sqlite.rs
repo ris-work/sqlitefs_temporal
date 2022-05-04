@@ -379,6 +379,19 @@ impl DbModule for Sqlite {
                 ";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("metadata table: {}", res_audit_trigger_update);
+                let sql_audit_trigger_insert = "\
+                CREATE TRIGGER audit_insert_metadata AFTER INSERT on metadata \
+                BEGIN \
+                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
+                    OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
+                    OLD.crtime, OLD.crtime_nsec, \
+                    OLD.kind, OLD.mode, OLD.nlink, \
+                    OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
+                END \
+                ";
+                let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
+                debug!("metadata table: {}", res_audit_trigger_insert);
             }
         }
         {
@@ -423,6 +436,15 @@ impl DbModule for Sqlite {
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("dentry table: {}", res_audit_trigger_update);
+                let sql_audit_trigger_insert = "\
+                CREATE TRIGGER audit_update_dentry AFTER INSERT on dentry \
+                BEGIN \
+                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    OLD.parent_id, OLD.child_id, OLD.file_type, \
+                    OLD.name); \
+                END";
+                let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
+                debug!("dentry table: {}", res_audit_trigger_insert);
             }
         }
         {
@@ -464,6 +486,15 @@ impl DbModule for Sqlite {
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("data table: {}", res_audit_trigger_update);
+                let sql_audit_trigger_insert = "\
+                CREATE TRIGGER audit_insert_data AFTER INSERT on data \
+                BEGIN \
+                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
+                    OLD.file_id, OLD.block_num, OLD.data \
+                    ); \
+                END";
+                let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
+                debug!("data table: {}", res_audit_trigger_insert);
             }
         }
         {
@@ -505,6 +536,15 @@ impl DbModule for Sqlite {
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("xattr table: {}", res_audit_trigger_update);
+                let sql_audit_trigger_insert = "\
+                CREATE TRIGGER audit_insert_xattr AFTER INSERT on xattr FOR EACH ROW \
+                BEGIN \
+                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
+                    OLD.file_id, OLD.name, OLD.value \
+                    ); \
+                END";
+                let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
+                debug!("xattr table: {}", res_audit_trigger_insert);
             }
         }
         {
