@@ -370,11 +370,11 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_update_metadata AFTER UPDATE on metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
-                    OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
-                    OLD.crtime, OLD.crtime_nsec, \
-                    OLD.kind, OLD.mode, OLD.nlink, \
-                    OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
+                    NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
+                    NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
+                    NEW.crtime, NEW.crtime_nsec, \
+                    NEW.kind, NEW.mode, NEW.nlink, \
+                    NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
                 END \
                 ";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
@@ -431,8 +431,8 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_update_dentry AFTER UPDATE on dentry \
                 BEGIN \
                     INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.parent_id, OLD.child_id, OLD.file_type, \
-                    OLD.name); \
+                    NEW.parent_id, NEW.child_id, NEW.file_type, \
+                    NEW.name); \
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("dentry table: {}", res_audit_trigger_update);
@@ -481,7 +481,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_update_data AFTER UPDATE on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.file_id, OLD.block_num, OLD.data \
+                    NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
@@ -531,7 +531,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_update_xattr AFTER UPDATE on xattr FOR EACH ROW \
                 BEGIN \
                     INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.file_id, OLD.name, OLD.value \
+                    NEW.file_id, NEW.name, NEW.value \
                     ); \
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
