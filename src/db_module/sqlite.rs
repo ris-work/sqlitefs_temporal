@@ -356,7 +356,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_metadata AFTER DELETE on metadata \
                 BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
                     OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
                     OLD.crtime, OLD.crtime_nsec, \
@@ -369,7 +369,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_metadata AFTER UPDATE on metadata \
                 BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
+                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
                     NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
                     NEW.crtime, NEW.crtime_nsec, \
@@ -382,7 +382,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_metadata AFTER INSERT on metadata \
                 BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
                     NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
                     NEW.crtime, NEW.crtime_nsec, \
@@ -420,7 +420,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_dentry AFTER DELETE on dentry \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.parent_id, OLD.child_id, OLD.file_type, \
                     OLD.name); \
                 END \
@@ -430,7 +430,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_dentry AFTER UPDATE on dentry \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
+                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.parent_id, NEW.child_id, NEW.file_type, \
                     NEW.name); \
                 END";
@@ -439,7 +439,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_dentry AFTER INSERT on dentry \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.parent_id, NEW.child_id, NEW.file_type, \
                     NEW.name); \
                 END";
@@ -470,7 +470,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_data AFTER DELETE on data \
                 BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.block_num, OLD.data \
                     ); \
                 END \
@@ -480,7 +480,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_data AFTER UPDATE on data \
                 BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
+                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
@@ -489,7 +489,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_data AFTER INSERT on data \
                 BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
@@ -520,7 +520,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_xattr AFTER DELETE on xattr \
                 BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.name, OLD.value \
                     );\
                 END \
@@ -530,7 +530,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_xattr AFTER UPDATE on xattr FOR EACH ROW \
                 BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
+                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.file_id, NEW.name, NEW.value \
                     ); \
                 END";
@@ -539,7 +539,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_xattr AFTER INSERT on xattr FOR EACH ROW \
                 BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.file_id, NEW.name, NEW.value \
                     ); \
                 END";
