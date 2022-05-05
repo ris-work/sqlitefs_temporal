@@ -388,7 +388,6 @@ impl DbModule for Sqlite {
                     NEW.crtime, NEW.crtime_nsec, \
                     NEW.kind, NEW.mode, NEW.nlink, \
                     NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
-                    NEW.id, NULL, NULL, NULL, \
                 END \
                 ";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
