@@ -490,7 +490,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_insert_data AFTER INSERT on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NEW.file_id, NULL, NULL \
+                    NEW.file_id, NEW.block_num, NULL \
                     ); \
                 END";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
