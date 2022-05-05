@@ -383,11 +383,12 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_insert_metadata AFTER INSERT on metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
+                    NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
+                    NEW.crtime, NEW.crtime_nsec, \
+                    NEW.kind, NEW.mode, NEW.nlink, \
+                    NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
                     NEW.id, NULL, NULL, NULL, \
-                    NULL, NULL, NULL, NULL, \
-                    NULL, NULL, \
-                    NULL, NULL, NULL, \
-                    NULL, NULL, NULL, NULL); \
                 END \
                 ";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
@@ -490,7 +491,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_insert_data AFTER INSERT on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NEW.file_id, NEW.block_num, NULL \
+                    NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
