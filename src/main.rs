@@ -35,7 +35,7 @@ fn main() {
         .arg(db_path_arg)
         .get_matches();
 
-    let mut option_vals = ["-o", "fsname=sqlitefs", "-o", "default_permissions", "-o", "allow_other"].to_vec();
+    let mut option_vals = ["-o", "fsname=sqlitefs", "-o", "default_permissions", "-o", "allow_other", "-o", "read_only"].to_vec();
     if let Some(v) = matches.values_of("mount_option") {
         for i in v {
             option_vals.push("-o");
