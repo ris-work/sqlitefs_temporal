@@ -4,7 +4,7 @@ use crate::sqerror::Result;
 use fuse::{FileAttr, FileType};
 use time::Timespec;
 use chrono::{DateTime, Utc, NaiveDateTime};
-use std::string;
+//use std::string;
 
 pub trait DbModule {
     /// Create tables (if not found) and add root directory (if not found)
