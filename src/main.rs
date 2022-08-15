@@ -28,8 +28,10 @@ fn main() {
         .index(2);
 
     let db_time_arg = Arg::with_name("at_time")
+        .short("t")
+        .long("time")
         .help("Sqlite database time to rewind to. If specified, implies read-only.")
-        .index(3);
+        .takes_value(true);
 
     let matches = App::new("sqlitefs")
         .about("Sqlite database as a filesystem.")
@@ -37,6 +39,7 @@ fn main() {
         .arg(mount_option_arg)
         .arg(mount_point_arg)
         .arg(db_path_arg)
+        .arg(db_time_arg)
         .get_matches();
 
     let mut option_vals = ["-o", "fsname=sqlitefs", "-o", "default_permissions", "-o", "allow_other", "-o", "read_only"].to_vec();
