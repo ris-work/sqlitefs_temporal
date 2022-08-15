@@ -108,7 +108,7 @@ impl SqliteFs {
         Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler})
     }
     pub fn new_at_time(path: & str, time: String) -> Result<SqliteFs, Error> {
-        let mut db = match Sqlite::new(Path::new(path)) {
+        let mut db = match Sqlite::new_at_time(Path::new(path)) {
             Ok(n) => n,
             Err(err) => return Err(err)
         };
