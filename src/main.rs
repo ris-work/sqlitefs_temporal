@@ -26,6 +26,10 @@ fn main() {
     let db_path_arg = Arg::with_name("db_path")
         .help("Sqlite database file path. If not set, open database in memory.")
         .index(2);
+    
+    let db_time_arg = Arg::with_name("at_time")
+        .help("Sqlite database time to rewind to. If specified, implies read-only.")
+        .index(3);
 
     let matches = App::new("sqlitefs")
         .about("Sqlite database as a filesystem.")
