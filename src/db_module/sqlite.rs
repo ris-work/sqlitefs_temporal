@@ -343,6 +343,18 @@ impl Sqlite {
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
         Ok(Sqlite { conn })
     }
+    pub fn new_at_time(path: &Path) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        // enable foreign key. Sqlite ignores foreign key by default.
+        conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
+        Ok(Sqlite { conn })
+    }
+    pub fn new_read_only(path: &Path) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        // enable foreign key. Sqlite ignores foreign key by default.
+        conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
+        Ok(Sqlite { conn })
+    }
 
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
