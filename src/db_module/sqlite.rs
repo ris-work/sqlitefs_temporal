@@ -173,8 +173,58 @@ fn get_inode_local(inode: u32, tx: &Connection) -> Result<Option<DBFileAttr>> {
     let params = params![inode];
     parse_attr(stmt, params)
 }
+fn get_inode_local_at_time(inode: u32, tx: &Connection, time: String) -> Result<Option<DBFileAttr>> {
+    let sql = "SELECT \
+            metadata.id,\
+            metadata.size,\
+            metadata.atime,\
+            metadata.atime_nsec,\
+            metadata.mtime,\
+            metadata.mtime_nsec,\
+            metadata.ctime,\
+            metadata.ctime_nsec,\
+            metadata.crtime,\
+            metadata.crtime_nsec,\
+            metadata.kind, \
+            metadata.mode,\
+            ncount.nlink,\
+            metadata.uid,\
+            metadata.gid,\
+            metadata.rdev,\
+            metadata.flags,\
+            blocknum.block_num \
+            FROM metadata \
+            LEFT JOIN (SELECT count(block_num) block_num FROM data WHERE file_id=$1) AS blocknum \
+            LEFT JOIN ( SELECT COUNT(child_id) nlink FROM dentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
+            WHERE id=$1";
+    let stmt = tx.prepare(sql)?;
+    let params = params![inode];
+    parse_attr(stmt, params)
+}
 
 fn get_dentry_single(parent: u32, name: &str, tx: &Connection) -> Result<Option<DEntry>> {
+    let sql = "SELECT child_id, file_type FROM dentry WHERE  parent_id=$1 and name=$2";
+    let mut stmt = tx.prepare(sql)?;
+    let res: Option<DEntry> = match stmt.query_row(
+        params![parent, name], |row| Ok(Some(DEntry{
+            parent_ino: parent,
+            child_ino: row.get(0)?,
+            file_type: const_to_file_type(row.get(1)?),
+            filename: name.to_string()
+        }))
+    ) {
+        Ok(n) => n,
+        Err(err) => {
+            if err == rusqlite::Error::QueryReturnedNoRows {
+                None
+            } else {
+                return Err(Error::from(err))
+            }
+        }
+    };
+    Ok(res)
+}
+fn get_dentry_single_at_time(parent: u32, name: &str, tx: &Connection, time: String) -> Result<Option<DEntry>> {
     let sql = "SELECT child_id, file_type FROM dentry WHERE  parent_id=$1 and name=$2";
     let mut stmt = tx.prepare(sql)?;
     let res: Option<DEntry> = match stmt.query_row(
@@ -603,6 +653,9 @@ impl DbModule for Sqlite {
     fn get_inode(&self, inode: u32) -> Result<Option<DBFileAttr>> {
         get_inode_local(inode, &self.conn)
     }
+    fn get_inode_at_time(&self, inode: u32, time: String) -> Result<Option<DBFileAttr>> {
+        get_inode_local_at_time(inode, &self.conn, time)
+    }
 
     fn add_inode_and_dentry(&mut self, parent: u32, name: &str, attr: &DBFileAttr) -> Result<u32> {
         let tx = self.conn.transaction()?;
@@ -703,6 +756,22 @@ impl DbModule for Sqlite {
     }
 
     fn get_dentry(&self, inode: u32) -> Result<Vec<DEntry>> {
+        let sql = "SELECT child_id, file_type, name FROM dentry WHERE parent_id=$1 ORDER BY name";
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(params![inode], |row| {
+            Ok(DEntry{parent_ino: inode,
+                child_ino: row.get(0)?,
+                file_type: const_to_file_type(row.get(1)?),
+                filename: row.get(2)?,
+            })
+        })?;
+        let mut entries: Vec<DEntry> = Vec::new();
+        for row in rows {
+            entries.push(row?);
+        }
+        Ok(entries)
+    }
+    fn get_dentry_at_time(&self, inode: u32, time: String) -> Result<Vec<DEntry>> {
         let sql = "SELECT child_id, file_type, name FROM dentry WHERE parent_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| {
@@ -894,8 +963,69 @@ impl DbModule for Sqlite {
         tx.commit()?;
         result
     }
+    fn lookup_at_time(&mut self, parent: u32, name: &str, time: String) -> Result<Option<DBFileAttr>> {
+        let sql = "SELECT \
+            metadata.id,\
+            metadata.size,\
+            metadata.atime,\
+            metadata.atime_nsec,\
+            metadata.mtime,\
+            metadata.mtime_nsec,\
+            metadata.ctime,\
+            metadata.ctime_nsec,\
+            metadata.crtime,\
+            metadata.crtime_nsec,\
+            metadata.kind, \
+            metadata.mode,\
+            ncount.nlink,\
+            metadata.uid,\
+            metadata.gid,\
+            metadata.rdev,\
+            metadata.flags, \
+            blocknum.block_num \
+            FROM dentry \
+            INNER JOIN metadata \
+            ON metadata.id=dentry.child_id \
+            AND dentry.parent_id=$1 \
+            AND dentry.name=$2 \
+            LEFT JOIN (SELECT file_id file_id, count(block_num) block_num from data) AS blocknum \
+            ON dentry.child_id = blocknum.file_id \
+            LEFT JOIN ( SELECT child_id, COUNT(child_id) nlink FROM dentry GROUP BY child_id) AS ncount \
+            ON dentry.child_id = ncount.child_id \
+            ";
+        let tx = self.conn.transaction()?;
+        let stmt = tx.prepare(sql)?;
+        let params = params![parent, name];
+        let result = parse_attr(stmt, params);
+        update_atime(parent, Utc::now(), &tx)?;
+        tx.commit()?;
+        result
+    }
+
 
     fn get_data(&mut self, inode:u32, block: u32, length: u32) -> Result<Vec<u8>> {
+        let tx = self.conn.transaction()?;
+        let row: Vec<u8>;
+        {
+            let mut stmt = tx.prepare(
+                "SELECT \
+                data FROM data WHERE file_id=$1 AND block_num=$2")?;
+            row = match stmt.query_row(params![inode, block], |row| row.get(0)) {
+                Ok(n) => n,
+                Err(err) => {
+                    if err == rusqlite::Error::QueryReturnedNoRows {
+                        vec![0; length as usize]
+                    } else {
+                        return Err(Error::from(err))
+                    }
+                }
+            };
+        }
+        update_atime(inode, Utc::now(), &tx)?;
+        tx.commit()?;
+        Ok(row)
+    }
+    fn get_data_at_time(&mut self, inode:u32, block: u32, length: u32, time: String) -> Result<Vec<u8>> {
         let tx = self.conn.transaction()?;
         let row: Vec<u8>;
         {
@@ -951,6 +1081,9 @@ impl DbModule for Sqlite {
     }
 
     fn get_db_block_size(&self) -> u32 {
+        BLOCK_SIZE
+    }
+    fn get_db_block_size_at_time(&self, time: String) -> u32 {
         BLOCK_SIZE
     }
 
