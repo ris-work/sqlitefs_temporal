@@ -26,7 +26,7 @@ fn main() {
     let db_path_arg = Arg::with_name("db_path")
         .help("Sqlite database file path. If not set, open database in memory.")
         .index(2);
-    
+
     let db_time_arg = Arg::with_name("at_time")
         .help("Sqlite database time to rewind to. If specified, implies read-only.")
         .index(3);
@@ -49,6 +49,7 @@ fn main() {
 
     let mountpoint = matches.value_of("mount_point").expect("Mount point path is missing.");
     let db_path = matches.value_of("db_path");
+    let db_time = matches.value_of("at_time");
     let options = option_vals
         .iter()
         .map(|o| o.as_ref())
@@ -56,10 +57,21 @@ fn main() {
     let fs: SqliteFs;
     match db_path {
         Some(path) => {
-            fs = match SqliteFs::new(path) {
-                Ok(n) => n,
-                Err(err) => {println!("{:?}", err); return;}
-            };
+            match db_time {
+                Some(time) => {
+                    debug!("Requested rewind at: {:?}", time);
+                    fs = match SqliteFs::new_at_time(path, time.to_string()) {
+                        Ok(n) => n,
+                        Err(err) => {println!("{:?}", err); return;}
+                    };
+                }
+                None => {
+                    fs = match SqliteFs::new(path) {
+                        Ok(n) => n,
+                        Err(err) => {println!("{:?}", err); return;}
+                    };
+                }
+            }
         }
         None => {
             let mut db = match Sqlite::new_in_memory() {
