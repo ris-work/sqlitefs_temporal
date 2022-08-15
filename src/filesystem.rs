@@ -107,6 +107,17 @@ impl SqliteFs {
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
         Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler})
     }
+    pub fn new_at_time(path: & str, time: String) -> Result<SqliteFs, Error> {
+        let mut db = match Sqlite::new(Path::new(path)) {
+            Ok(n) => n,
+            Err(err) => return Err(err)
+        };
+        db.init()?;
+        let lookup_count = Arc::new(Mutex::new(HashMap::<u32, u32>::new()));
+        let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
+        let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
+        Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler})
+    }
 
     pub fn new_with_db(db: Sqlite) -> Result<SqliteFs, Error> {
         let lookup_count = Arc::new(Mutex::new(HashMap::<u32, u32>::new()));
