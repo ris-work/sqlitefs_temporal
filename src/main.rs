@@ -24,7 +24,7 @@ fn main() {
         .required(true);
 
     let db_path_arg = Arg::with_name("db_path")
-        .help("Sqlite database file path. If not set, open database in memory.")
+        .help("Sqlite database file path. If not set, open database in memory. Rewind is not supported if an in-memory database is used.")
         .index(2);
 
     let db_time_arg = Arg::with_name("at_time")
