@@ -343,10 +343,14 @@ impl Sqlite {
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
         Ok(Sqlite { conn })
     }
-    pub fn new_at_time(path: &Path) -> Result<Self> {
+    pub fn new_at_time(path: &Path, time: String) -> Result<Self> {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
+        conn.execute("CREATE TEMP TABLE tdentry_audit AS SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < '2022-05-05T12:31:36.412' GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", NO_PARAMS)?;
+        conn.execute("CREATE TEMP TABLE tmetadata_audit AS SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < '2022-05-05T12:31:36.412' GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", NO_PARAMS)?;
+        conn.execute("CREATE TEMP TABLE tdata_audit AS SELECT * FROM (select * from data_audit WHERE timestamp_utc < '2022-05-05T12:31:36.412' GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", NO_PARAMS)?;
+        conn.execute("CREATE TEMP TABLE txattr_audit AS SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < '2022-05-05T12:31:36.412' GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", NO_PARAMS)?;
         Ok(Sqlite { conn })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
