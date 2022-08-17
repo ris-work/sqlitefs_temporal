@@ -347,10 +347,10 @@ impl Sqlite {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
-        conn.execute("CREATE TEMP TABLE tdentry_audit AS SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < '2022-05-05T12:31:36.412' GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tmetadata_audit AS SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < '2022-05-05T12:31:36.412' GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tdata_audit AS SELECT * FROM (select * from data_audit WHERE timestamp_utc < '2022-05-05T12:31:36.412' GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE txattr_audit AS SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) GROUP BY name ORDER BY timestamp_utc DESC LIMIT 10) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
+        conn.execute("CREATE TEMP TABLE tdentry_audit AS SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) GROUP BY name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tmetadata_audit AS SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) GROUP BY id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tdata_audit AS SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) GROUP BY file_id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE txattr_audit AS SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) GROUP BY file_id, name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
         Ok(Sqlite { conn })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
@@ -359,7 +359,6 @@ impl Sqlite {
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
         Ok(Sqlite { conn })
     }
-
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         // enable foreign key. Sqlite ignores foreign key by default.
