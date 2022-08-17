@@ -121,7 +121,7 @@ impl SqliteFs {
         let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
         const read_only: bool=true;
-        const rewind: bool=false;
+        const rewind: bool=true;
         Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler, read_only, rewind})
     }
 
