@@ -193,9 +193,9 @@ fn get_inode_local_at_time(inode: u32, tx: &Connection, time: String) -> Result<
             metadata.rdev,\
             metadata.flags,\
             blocknum.block_num \
-            FROM metadata \
-            LEFT JOIN (SELECT count(block_num) block_num FROM data WHERE file_id=$1) AS blocknum \
-            LEFT JOIN ( SELECT COUNT(child_id) nlink FROM dentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
+            FROM tmetadata \
+            LEFT JOIN (SELECT count(block_num) block_num FROM tdata WHERE file_id=$1) AS blocknum \
+            LEFT JOIN ( SELECT COUNT(child_id) nlink FROM tdentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
             WHERE id=$1";
     let stmt = tx.prepare(sql)?;
     let params = params![inode];
@@ -225,7 +225,7 @@ fn get_dentry_single(parent: u32, name: &str, tx: &Connection) -> Result<Option<
     Ok(res)
 }
 fn get_dentry_single_at_time(parent: u32, name: &str, tx: &Connection, time: String) -> Result<Option<DEntry>> {
-    let sql = "SELECT child_id, file_type FROM dentry WHERE  parent_id=$1 and name=$2";
+    let sql = "SELECT child_id, file_type FROM tdentry WHERE  parent_id=$1 and name=$2";
     let mut stmt = tx.prepare(sql)?;
     let res: Option<DEntry> = match stmt.query_row(
         params![parent, name], |row| Ok(Some(DEntry{
@@ -788,7 +788,7 @@ impl DbModule for Sqlite {
         Ok(entries)
     }
     fn get_dentry_at_time(&self, inode: u32, time: String) -> Result<Vec<DEntry>> {
-        let sql = "SELECT child_id, file_type, name FROM dentry WHERE parent_id=$1 ORDER BY name";
+        let sql = "SELECT child_id, file_type, name FROM tdentry WHERE parent_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| {
             Ok(DEntry{parent_ino: inode,
@@ -999,15 +999,15 @@ impl DbModule for Sqlite {
             metadata.rdev,\
             metadata.flags, \
             blocknum.block_num \
-            FROM dentry \
-            INNER JOIN metadata \
-            ON metadata.id=dentry.child_id \
-            AND dentry.parent_id=$1 \
-            AND dentry.name=$2 \
-            LEFT JOIN (SELECT file_id file_id, count(block_num) block_num from data) AS blocknum \
-            ON dentry.child_id = blocknum.file_id \
-            LEFT JOIN ( SELECT child_id, COUNT(child_id) nlink FROM dentry GROUP BY child_id) AS ncount \
-            ON dentry.child_id = ncount.child_id \
+            FROM tdentry \
+            INNER JOIN tmetadata \
+            ON tmetadata.id=tdentry.child_id \
+            AND tdentry.parent_id=$1 \
+            AND tdentry.name=$2 \
+            LEFT JOIN (SELECT file_id file_id, count(block_num) block_num from tdata) AS blocknum \
+            ON tdentry.child_id = blocknum.file_id \
+            LEFT JOIN ( SELECT child_id, COUNT(child_id) nlink FROM tdentry GROUP BY child_id) AS ncount \
+            ON tdentry.child_id = ncount.child_id \
             ";
         let tx = self.conn.transaction()?;
         let stmt = tx.prepare(sql)?;
@@ -1047,7 +1047,7 @@ impl DbModule for Sqlite {
         {
             let mut stmt = tx.prepare(
                 "SELECT \
-                data FROM data WHERE file_id=$1 AND block_num=$2")?;
+                data FROM tdata WHERE file_id=$1 AND block_num=$2")?;
             row = match stmt.query_row(params![inode, block], |row| row.get(0)) {
                 Ok(n) => n,
                 Err(err) => {
