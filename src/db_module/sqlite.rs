@@ -173,9 +173,59 @@ fn get_inode_local(inode: u32, tx: &Connection) -> Result<Option<DBFileAttr>> {
     let params = params![inode];
     parse_attr(stmt, params)
 }
+fn get_inode_local_at_time(inode: u32, tx: &Connection, time: String) -> Result<Option<DBFileAttr>> {
+    let sql = "SELECT \
+            metadata.id,\
+            metadata.size,\
+            metadata.atime,\
+            metadata.atime_nsec,\
+            metadata.mtime,\
+            metadata.mtime_nsec,\
+            metadata.ctime,\
+            metadata.ctime_nsec,\
+            metadata.crtime,\
+            metadata.crtime_nsec,\
+            metadata.kind, \
+            metadata.mode,\
+            ncount.nlink,\
+            metadata.uid,\
+            metadata.gid,\
+            metadata.rdev,\
+            metadata.flags,\
+            blocknum.block_num \
+            FROM tmetadata \
+            LEFT JOIN (SELECT count(block_num) block_num FROM tdata WHERE file_id=$1) AS blocknum \
+            LEFT JOIN ( SELECT COUNT(child_id) nlink FROM tdentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
+            WHERE id=$1";
+    let stmt = tx.prepare(sql)?;
+    let params = params![inode];
+    parse_attr(stmt, params)
+}
 
 fn get_dentry_single(parent: u32, name: &str, tx: &Connection) -> Result<Option<DEntry>> {
     let sql = "SELECT child_id, file_type FROM dentry WHERE  parent_id=$1 and name=$2";
+    let mut stmt = tx.prepare(sql)?;
+    let res: Option<DEntry> = match stmt.query_row(
+        params![parent, name], |row| Ok(Some(DEntry{
+            parent_ino: parent,
+            child_ino: row.get(0)?,
+            file_type: const_to_file_type(row.get(1)?),
+            filename: name.to_string()
+        }))
+    ) {
+        Ok(n) => n,
+        Err(err) => {
+            if err == rusqlite::Error::QueryReturnedNoRows {
+                None
+            } else {
+                return Err(Error::from(err))
+            }
+        }
+    };
+    Ok(res)
+}
+fn get_dentry_single_at_time(parent: u32, name: &str, tx: &Connection, time: String) -> Result<Option<DEntry>> {
+    let sql = "SELECT child_id, file_type FROM tdentry WHERE  parent_id=$1 and name=$2";
     let mut stmt = tx.prepare(sql)?;
     let res: Option<DEntry> = match stmt.query_row(
         params![parent, name], |row| Ok(Some(DEntry{
@@ -293,7 +343,22 @@ impl Sqlite {
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
         Ok(Sqlite { conn })
     }
-
+    pub fn new_at_time(path: &Path, time: String) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        // enable foreign key. Sqlite ignores foreign key by default.
+        conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
+        conn.execute("CREATE TEMP TABLE tdentry_audit AS SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) GROUP BY name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tmetadata_audit AS SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) GROUP BY id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tdata_audit AS SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) GROUP BY file_id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE txattr_audit AS SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) GROUP BY file_id, name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
+        Ok(Sqlite { conn })
+    }
+    pub fn new_read_only(path: &Path) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        // enable foreign key. Sqlite ignores foreign key by default.
+        conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
+        Ok(Sqlite { conn })
+    }
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         // enable foreign key. Sqlite ignores foreign key by default.
@@ -356,7 +421,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_metadata AFTER DELETE on metadata \
                 BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
                     OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
                     OLD.crtime, OLD.crtime_nsec, \
@@ -369,12 +434,12 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_metadata AFTER UPDATE on metadata \
                 BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
-                    OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
-                    OLD.crtime, OLD.crtime_nsec, \
-                    OLD.kind, OLD.mode, OLD.nlink, \
-                    OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
+                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
+                    NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
+                    NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
+                    NEW.crtime, NEW.crtime_nsec, \
+                    NEW.kind, NEW.mode, NEW.nlink, \
+                    NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
                 END \
                 ";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
@@ -382,12 +447,12 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_metadata AFTER INSERT on metadata \
                 BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NEW.id, NULL, NULL, NULL, \
-                    NULL, NULL, NULL, NULL, \
-                    NULL, NULL, \
-                    NULL, NULL, NULL, \
-                    NULL, NULL, NULL, NULL); \
+                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
+                    NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
+                    NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
+                    NEW.crtime, NEW.crtime_nsec, \
+                    NEW.kind, NEW.mode, NEW.nlink, \
+                    NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
                 END \
                 ";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
@@ -420,7 +485,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_dentry AFTER DELETE on dentry \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.parent_id, OLD.child_id, OLD.file_type, \
                     OLD.name); \
                 END \
@@ -430,16 +495,16 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_dentry AFTER UPDATE on dentry \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.parent_id, OLD.child_id, OLD.file_type, \
-                    OLD.name); \
+                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
+                    NEW.parent_id, NEW.child_id, NEW.file_type, \
+                    NEW.name); \
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("dentry table: {}", res_audit_trigger_update);
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_dentry AFTER INSERT on dentry \
                 BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.parent_id, NEW.child_id, NEW.file_type, \
                     NEW.name); \
                 END";
@@ -470,7 +535,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_data AFTER DELETE on data \
                 BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.block_num, OLD.data \
                     ); \
                 END \
@@ -480,8 +545,8 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_data AFTER UPDATE on data \
                 BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.file_id, OLD.block_num, OLD.data \
+                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
+                    NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
@@ -489,8 +554,8 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_data AFTER INSERT on data \
                 BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
-                    NEW.file_id, NULL, NULL \
+                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
+                    NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
                 let res_audit_trigger_insert = self.conn.execute(sql_audit_trigger_insert, params![])?;
@@ -520,7 +585,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_delete = "\
                 CREATE TRIGGER audit_delete_xattr AFTER DELETE on xattr \
                 BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'DELETE', \
+                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.name, OLD.value \
                     );\
                 END \
@@ -530,8 +595,8 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_update = "\
                 CREATE TRIGGER audit_update_xattr AFTER UPDATE on xattr FOR EACH ROW \
                 BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'UPDATE', \
-                    OLD.file_id, OLD.name, OLD.value \
+                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
+                    NEW.file_id, NEW.name, NEW.value \
                     ); \
                 END";
                 let res_audit_trigger_update = self.conn.execute(sql_audit_trigger_update, params![])?;
@@ -539,7 +604,7 @@ impl DbModule for Sqlite {
                 let sql_audit_trigger_insert = "\
                 CREATE TRIGGER audit_insert_xattr AFTER INSERT on xattr FOR EACH ROW \
                 BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, datetime('now', 'utc'), 'INSERT', \
+                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.file_id, NEW.name, NEW.value \
                     ); \
                 END";
@@ -602,6 +667,9 @@ impl DbModule for Sqlite {
 
     fn get_inode(&self, inode: u32) -> Result<Option<DBFileAttr>> {
         get_inode_local(inode, &self.conn)
+    }
+    fn get_inode_at_time(&self, inode: u32, time: String) -> Result<Option<DBFileAttr>> {
+        get_inode_local_at_time(inode, &self.conn, time)
     }
 
     fn add_inode_and_dentry(&mut self, parent: u32, name: &str, attr: &DBFileAttr) -> Result<u32> {
@@ -704,6 +772,22 @@ impl DbModule for Sqlite {
 
     fn get_dentry(&self, inode: u32) -> Result<Vec<DEntry>> {
         let sql = "SELECT child_id, file_type, name FROM dentry WHERE parent_id=$1 ORDER BY name";
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(params![inode], |row| {
+            Ok(DEntry{parent_ino: inode,
+                child_ino: row.get(0)?,
+                file_type: const_to_file_type(row.get(1)?),
+                filename: row.get(2)?,
+            })
+        })?;
+        let mut entries: Vec<DEntry> = Vec::new();
+        for row in rows {
+            entries.push(row?);
+        }
+        Ok(entries)
+    }
+    fn get_dentry_at_time(&self, inode: u32, time: String) -> Result<Vec<DEntry>> {
+        let sql = "SELECT child_id, file_type, name FROM tdentry WHERE parent_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| {
             Ok(DEntry{parent_ino: inode,
@@ -894,6 +978,45 @@ impl DbModule for Sqlite {
         tx.commit()?;
         result
     }
+    fn lookup_at_time(&mut self, parent: u32, name: &str, time: String) -> Result<Option<DBFileAttr>> {
+        let sql = "SELECT \
+            metadata.id,\
+            metadata.size,\
+            metadata.atime,\
+            metadata.atime_nsec,\
+            metadata.mtime,\
+            metadata.mtime_nsec,\
+            metadata.ctime,\
+            metadata.ctime_nsec,\
+            metadata.crtime,\
+            metadata.crtime_nsec,\
+            metadata.kind, \
+            metadata.mode,\
+            ncount.nlink,\
+            metadata.uid,\
+            metadata.gid,\
+            metadata.rdev,\
+            metadata.flags, \
+            blocknum.block_num \
+            FROM tdentry \
+            INNER JOIN tmetadata \
+            ON tmetadata.id=tdentry.child_id \
+            AND tdentry.parent_id=$1 \
+            AND tdentry.name=$2 \
+            LEFT JOIN (SELECT file_id file_id, count(block_num) block_num from tdata) AS blocknum \
+            ON tdentry.child_id = blocknum.file_id \
+            LEFT JOIN ( SELECT child_id, COUNT(child_id) nlink FROM tdentry GROUP BY child_id) AS ncount \
+            ON tdentry.child_id = ncount.child_id \
+            ";
+        let tx = self.conn.transaction()?;
+        let stmt = tx.prepare(sql)?;
+        let params = params![parent, name];
+        let result = parse_attr(stmt, params);
+        update_atime(parent, Utc::now(), &tx)?;
+        tx.commit()?;
+        result
+    }
+
 
     fn get_data(&mut self, inode:u32, block: u32, length: u32) -> Result<Vec<u8>> {
         let tx = self.conn.transaction()?;
@@ -902,6 +1025,28 @@ impl DbModule for Sqlite {
             let mut stmt = tx.prepare(
                 "SELECT \
                 data FROM data WHERE file_id=$1 AND block_num=$2")?;
+            row = match stmt.query_row(params![inode, block], |row| row.get(0)) {
+                Ok(n) => n,
+                Err(err) => {
+                    if err == rusqlite::Error::QueryReturnedNoRows {
+                        vec![0; length as usize]
+                    } else {
+                        return Err(Error::from(err))
+                    }
+                }
+            };
+        }
+        update_atime(inode, Utc::now(), &tx)?;
+        tx.commit()?;
+        Ok(row)
+    }
+    fn get_data_at_time(&mut self, inode:u32, block: u32, length: u32, time: String) -> Result<Vec<u8>> {
+        let tx = self.conn.transaction()?;
+        let row: Vec<u8>;
+        {
+            let mut stmt = tx.prepare(
+                "SELECT \
+                data FROM tdata WHERE file_id=$1 AND block_num=$2")?;
             row = match stmt.query_row(params![inode, block], |row| row.get(0)) {
                 Ok(n) => n,
                 Err(err) => {
@@ -951,6 +1096,9 @@ impl DbModule for Sqlite {
     }
 
     fn get_db_block_size(&self) -> u32 {
+        BLOCK_SIZE
+    }
+    fn get_db_block_size_at_time(&self, time: String) -> u32 {
         BLOCK_SIZE
     }
 
