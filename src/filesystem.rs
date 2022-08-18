@@ -162,7 +162,9 @@ impl Filesystem for SqliteFs {
 
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let parent = parent as u32;
-        let child = match self.db.lookup(parent, name.to_str().unwrap()) {
+        let child;
+        if(!self.rewind){
+        child = match self.db.lookup(parent, name.to_str().unwrap()) {
             Ok(n) => {
                 match n {
                     Some(v) => {
@@ -175,6 +177,21 @@ impl Filesystem for SqliteFs {
             },
             Err(err) => {reply.error(ENOENT); debug!("{}", err); return;}
         };
+        } else {
+        child = match self.db.lookup_at_time(parent, name.to_str().unwrap(), self.time.clone()) {
+            Ok(n) => {
+                match n {
+                    Some(v) => {
+                        reply.entry(&ONE_SEC, &v.get_file_attr() , 0);
+                        debug!("filesystem:lookup, return:{:?}", v.get_file_attr());
+                        v.ino
+                    },
+                    None => { reply.error(ENOENT); return;}
+                }
+            },
+            Err(err) => {reply.error(ENOENT); debug!("{}", err); return;}
+        };
+        };
         let mut lc_list = self.lookup_count.lock().unwrap();
         let lc = lc_list.entry(child).or_insert(0);
         *lc += 1;
@@ -182,6 +199,7 @@ impl Filesystem for SqliteFs {
     }
 
     fn forget(&mut self, _req: &Request<'_>, ino: u64, nlookup: u64) {
+        if(!self.read_only){
         let ino = ino as u32;
         let mut lc_list = self.lookup_count.lock().unwrap();
         let lc = lc_list.entry(ino).or_insert(0);
@@ -193,6 +211,7 @@ impl Filesystem for SqliteFs {
                 Ok(n) => n,
                 Err(err) => debug!("{}", err)
             }
+        }
         }
     }
 
