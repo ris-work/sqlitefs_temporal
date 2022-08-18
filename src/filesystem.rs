@@ -25,7 +25,10 @@ use libc::{
     ENAMETOOLONG,
     ENODATA,
     ERANGE,
+    O_RDWR,
+    O_WRONLY,
     O_RDONLY,
+    O_CREAT,
     O_APPEND,
     S_ISGID,
     S_ISVTX,
@@ -398,6 +401,7 @@ impl Filesystem for SqliteFs {
     }
 
     fn rmdir(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        if(!self.read_only){
         let parent = parent as u32;
         let name = name.to_str().unwrap();
         let attr = match self.db.lookup(parent, name) {
@@ -433,9 +437,14 @@ impl Filesystem for SqliteFs {
             };
         }
         reply.ok();
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 
     fn symlink(&mut self, req: &Request, parent: u64, name: &OsStr, link: &Path, reply: ReplyEntry) {
+        if(!self.read_only){
         let now = SystemTime::now();
         let mut attr = DBFileAttr {
             ino: 0,
@@ -473,6 +482,10 @@ impl Filesystem for SqliteFs {
         let lc = lc_list.entry(ino).or_insert(0);
         *lc += 1;
         debug!("filesystem:symlink, inode: {:?} lookup count:{:?}", ino, *lc);
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 
     fn rename(
@@ -484,6 +497,7 @@ impl Filesystem for SqliteFs {
         newname: &OsStr,
         reply: ReplyEmpty
     ) {
+        if(!self.read_only){
         let parent = parent as u32;
         let name = name.to_str().unwrap();
         let newparent = newparent as u32;
@@ -507,9 +521,14 @@ impl Filesystem for SqliteFs {
             }
         }
         reply.ok();
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 
     fn link(&mut self, _req: &Request<'_>, ino: u64, newparent: u64, newname: &OsStr, reply: ReplyEntry) {
+        if(!self.read_only){
         let attr = match self.db.link_dentry(ino as u32, newparent as u32, newname.to_str().unwrap()) {
             Ok(n) => n,
             Err(err) => match err.kind() {
@@ -523,6 +542,10 @@ impl Filesystem for SqliteFs {
         let lc = lc_list.entry(ino as u32).or_insert(0);
         *lc += 1;
         debug!("filesystem:link, lookup count:{:?}", *lc);
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 
     fn open(&mut self, _req: &Request<'_>, ino: u64, flags: u32, reply: ReplyOpen) {
@@ -537,12 +560,20 @@ impl Filesystem for SqliteFs {
         if flags & O_NOATIME as u32 > 0 {
             stat.noatime = true;
         }
+        if(self.read_only && ((flags & O_RDWR as u32 > 0) || 
+                              (flags & O_WRONLY as u32 > 0) || 
+                              (flags & O_APPEND as u32 > 0) ||
+                              (flags & O_CREAT as u32 > 0))){
+            reply.error(EPERM);
+        }
+        else {
         let mut handler = self.open_file_handler.lock().unwrap();
         let handle_list = handler.entry(ino).or_insert_with(OpenFileHandler::new);
         let fh = handle_list.count;
         (*handle_list).list.insert(fh, stat);
         (*handle_list).count += 1;
         reply.opened(fh, 0);
+        }
     }
 
     fn read(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, size: u32, reply: ReplyData) {
