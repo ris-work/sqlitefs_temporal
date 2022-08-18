@@ -600,6 +600,7 @@ impl Filesystem for SqliteFs {
     }
 
     fn write(&mut self, _req: &Request<'_>, ino: u64, _fh: u64, offset: i64, data: &[u8], _flags: u32, reply: ReplyWrite) {
+        if(!self.read_only){
         let block_size = self.db.get_db_block_size();
         let ino = ino as u32;
         let size = data.len() as u32;
@@ -635,6 +636,10 @@ impl Filesystem for SqliteFs {
             }
         }
         reply.written(size);
+        }
+        else {
+            reply.error(EPERM);
+        }
     }
 
     fn release(&mut self, _req: &Request<'_>, ino: u64, fh: u64, _flags: u32, _lock_owner: u64, _flush: bool, reply: ReplyEmpty) {
@@ -733,6 +738,7 @@ impl Filesystem for SqliteFs {
     }
 
     fn setxattr(&mut self, _req: &Request<'_>, ino: u64, name: &OsStr, value: &[u8], flags: u32, _position: u32, reply: ReplyEmpty) {
+        if(!self.read_only){
         let ino = ino as u32;
         let name = name.to_str().unwrap();
         if flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0 {
@@ -764,6 +770,10 @@ impl Filesystem for SqliteFs {
             Err(err) => {reply.error(ENOENT); debug!("{}", err); return;}
         };
         reply.ok();
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 
     fn getxattr(&mut self, _req: &Request<'_>, ino: u64, name: &OsStr, size: u32, reply: ReplyXattr) {
@@ -803,6 +813,7 @@ impl Filesystem for SqliteFs {
     }
 
     fn removexattr(&mut self, _req: &Request<'_>, ino: u64, name: &OsStr, reply: ReplyEmpty) {
+        if(!self.read_only){
         let ino = ino as u32;
         let name = name.to_str().unwrap();
         match self.db.delete_xattr(ino, name) {
@@ -810,9 +821,14 @@ impl Filesystem for SqliteFs {
             Err(err) => {reply.error(ENOENT); debug!("{}", err); return;}
         };
         reply.ok();
+        }
+        else {
+            reply.error(EPERM);
+        }
     }
 
     fn create(&mut self, req: &Request<'_>, parent: u64, name: &OsStr, mode: u32, _flags: u32, reply: ReplyCreate) {
+        if(!self.read_only){
         let ino;
         let parent = parent as u32;
         let name = name.to_str().unwrap();
@@ -875,5 +891,9 @@ impl Filesystem for SqliteFs {
         let lc = lc_list.entry(ino).or_insert(0);
         *lc += 1;
         reply.created(&ONE_SEC, &attr.get_file_attr(), 0, 0, 0);
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 }
