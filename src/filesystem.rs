@@ -160,6 +160,9 @@ impl Filesystem for SqliteFs {
             }
         }
         }
+        else {
+            //reply.error(EPERM);
+        }
     }
 
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
@@ -267,6 +270,7 @@ impl Filesystem for SqliteFs {
         flags: Option<u32>,
         reply: ReplyAttr
     ) {
+        if(!self.read_only){
         let mut attr = match self.db.get_inode(ino as u32) {
             Ok(n) => {
                 match n {
@@ -290,6 +294,10 @@ impl Filesystem for SqliteFs {
             Err(err) => {reply.error(ENOENT); debug!("{}", err); return;}
         };
         reply.attr(&ONE_SEC, &attr.get_file_attr());
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 
     fn readlink(&mut self, _req: &Request<'_>, ino: u64, reply: ReplyData) {
