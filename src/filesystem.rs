@@ -324,6 +324,7 @@ impl Filesystem for SqliteFs {
     }
 
     fn mkdir(&mut self, req: &Request<'_>, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
+        if(!self.read_only){
         let now = SystemTime::now();
         let parent = parent as u32;
         let mut attr = DBFileAttr {
@@ -366,9 +367,14 @@ impl Filesystem for SqliteFs {
         let lc = lc_list.entry(ino).or_insert(0);
         *lc += 1;
         debug!("filesystem:mkdir, inode: {:?} lookup count:{:?}", ino, *lc);
+        }
+        else {
+            reply.error(EPERM);
+        }
     }
 
     fn unlink(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        if(!self.read_only){
         let ino = match self.db.delete_dentry(parent as u32, name.to_str().unwrap()) {
             Ok(n) => n,
             Err(err) => {reply.error(ENOENT); debug!("{}", err); return;}
@@ -385,6 +391,10 @@ impl Filesystem for SqliteFs {
             };
         }
         reply.ok();
+        }
+        else{
+            reply.error(EPERM);
+        }
     }
 
     fn rmdir(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: ReplyEmpty) {
