@@ -95,6 +95,7 @@ pub struct SqliteFs{
     open_dir_handler: Arc<Mutex<HashMap<u32, OpenDirHandler>>>,
     read_only: bool,
     rewind: bool,
+    time: String,
 }
 
 impl SqliteFs {
@@ -109,10 +110,12 @@ impl SqliteFs {
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
         const read_only: bool=false;
         const rewind: bool=false;
-        Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler, read_only, rewind})
+        let time: String="".to_string();
+        Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler, read_only, rewind, time})
     }
     pub fn new_at_time(path: & str, time: String) -> Result<SqliteFs, Error> {
-        let mut db = match Sqlite::new_at_time(Path::new(path), time) {
+        let time_init = time.clone();
+        let mut db = match Sqlite::new_at_time(Path::new(path), time_init) {
             Ok(n) => n,
             Err(err) => return Err(err)
         };
@@ -122,7 +125,7 @@ impl SqliteFs {
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
         const read_only: bool=true;
         const rewind: bool=true;
-        Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler, read_only, rewind})
+        Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler, read_only, rewind, time})
     }
 
     pub fn new_with_db(db: Sqlite) -> Result<SqliteFs, Error> {
@@ -131,7 +134,8 @@ impl SqliteFs {
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
         const read_only: bool=false;
         const rewind: bool=false;
-        Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler, read_only, rewind})
+        let time: String="".to_string();
+        Ok(SqliteFs{db, lookup_count, open_file_handler, open_dir_handler, read_only, rewind, time})
     }
 }
 
@@ -145,12 +149,14 @@ impl Filesystem for SqliteFs {
     }
 
     fn destroy(&mut self, _req: &Request<'_>) {
+        if(!self.read_only){
         let lc_list = self.lookup_count.lock().unwrap();
         for key in lc_list.keys() {
             match self.db.delete_inode_if_noref(*key) {
                 Ok(n) => n,
                 Err(err) => debug!("{}", err)
             }
+        }
         }
     }
 
