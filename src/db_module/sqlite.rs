@@ -1137,9 +1137,42 @@ impl DbModule for Sqlite {
         };
         Ok(row)
     }
+    fn get_xattr_at_time(&self, inode: u32, key: &str, time: String) -> Result<Vec<u8>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT \
+            value FROM txattr WHERE file_id=$1 AND name=$2")?;
+        let row: Vec<u8> = match stmt.query_row(params![inode, key], |row| row.get(0)) {
+            Ok(n) => n,
+            Err(err) => {
+                if err == rusqlite::Error::QueryReturnedNoRows {
+                    return Err(Error::from(ErrorKind::FsNoEnt {
+                        description: format!(
+                            "inode: {} name:{}",
+                            inode, key
+                        )
+                    }))
+                } else {
+                    return Err(Error::from(err))
+                }
+            }
+        };
+        Ok(row)
+    }
 
     fn list_xattr(&self, inode: u32) -> Result<Vec<String>> {
         let sql = "SELECT name FROM xattr WHERE file_id=$1 ORDER BY name";
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(params![inode], |row| {
+            Ok(row.get(0)?)
+        })?;
+        let mut name_list: Vec<String> = Vec::new();
+        for row in rows {
+            name_list.push(row?);
+        }
+        Ok(name_list)
+    }
+    fn list_xattr_at_time(&self, inode: u32, time: String) -> Result<Vec<String>> {
+        let sql = "SELECT name FROM txattr WHERE file_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| {
             Ok(row.get(0)?)

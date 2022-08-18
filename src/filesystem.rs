@@ -141,10 +141,12 @@ impl SqliteFs {
 
 impl Filesystem for SqliteFs {
     fn init(&mut self, _req: &Request<'_>) -> Result<(), c_int> {
+        if(!self.rewind){
         match self.db.delete_all_noref_inode() {
             Ok(n) => n,
             Err(err) => debug!("{}", err)
         };
+        }
         Ok(())
     }
 
@@ -216,6 +218,7 @@ impl Filesystem for SqliteFs {
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
+        if(!self.rewind){
         match self.db.get_inode(ino as u32) {
             Ok(n) => {
                 match n {
@@ -229,6 +232,22 @@ impl Filesystem for SqliteFs {
             },
             Err(_err) => reply.error(ENOENT)
         };
+        }
+        else{
+        match self.db.get_inode_at_time(ino as u32, self.time.clone()) {
+            Ok(n) => {
+                match n {
+                    Some(v) => {
+                        reply.attr(&ONE_SEC, &v.get_file_attr());
+                        debug!("filesystem:getattr, return:{:?}", v.get_file_attr());
+                    },
+                    None => reply.error(ENOENT)
+                }
+
+            },
+            Err(_err) => reply.error(ENOENT)
+        };
+        }
     }
 
     fn setattr(

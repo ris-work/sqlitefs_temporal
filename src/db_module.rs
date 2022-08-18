@@ -57,8 +57,10 @@ pub trait DbModule {
     fn set_xattr(&mut self, inode: u32, key: &str, value: &[u8]) -> Result<()>;
     /// Get xattr value.
     fn get_xattr(&self, inode: u32, key: &str) -> Result<Vec<u8>>;
+    fn get_xattr_at_time(&self, inode: u32, key: &str, time: String) -> Result<Vec<u8>>;
     /// List xattr name.
     fn list_xattr(&self, inode: u32) -> Result<Vec<String>>;
+    fn list_xattr_at_time(&self, inode: u32, time: String) -> Result<Vec<String>>;
     /// Delete xattr
     fn delete_xattr(&mut self, inode: u32, key: &str) -> Result<()>;
 }
