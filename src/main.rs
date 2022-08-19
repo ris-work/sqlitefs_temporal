@@ -33,6 +33,11 @@ fn main() {
         .help("Sqlite database time to rewind to. If specified, implies read-only.")
         .takes_value(true);
 
+    let db_read_only_arg = Arg::with_name("read_only")
+        .short("r")
+        .long("read-only")
+        .help("Mount as read-only.");
+
     let matches = App::new("sqlitefs")
         .about("Sqlite database as a filesystem.")
         .version(crate_version!())
@@ -40,6 +45,7 @@ fn main() {
         .arg(mount_point_arg)
         .arg(db_path_arg)
         .arg(db_time_arg)
+        .arg(db_read_only_arg)
         .get_matches();
 
     let mut option_vals = ["-o", "fsname=sqlitefs", "-o", "default_permissions", "-o", "allow_other", "-o", "read_only"].to_vec();
@@ -53,11 +59,13 @@ fn main() {
     let mountpoint = matches.value_of("mount_point").expect("Mount point path is missing.");
     let db_path = matches.value_of("db_path");
     let db_time = matches.value_of("at_time");
+    let db_read_only: bool = matches.is_present("read_only");
     let options = option_vals
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&OsStr>>();
     let fs: SqliteFs;
+    debug!("read-only: {}", db_read_only);
     match db_path {
         Some(path) => {
             match db_time {
