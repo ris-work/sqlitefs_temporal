@@ -78,10 +78,18 @@ fn main() {
                 }
                 None => {
                     debug!("Rewind is not requested; proceeding as-is.");
-                    fs = match SqliteFs::new(path) {
-                        Ok(n) => n,
-                        Err(err) => {println!("{:?}", err); return;}
-                    };
+                    if(db_read_only){
+                        fs = match SqliteFs::new(path) {
+                            Ok(n) => n,
+                            Err(err) => {println!("{:?}", err); return;}
+                        };
+                    }
+                    else{
+                        fs = match SqliteFs::new(path) {
+                            Ok(n) => n,
+                            Err(err) => {println!("{:?}", err); return;}
+                        };
+                    }
                 }
             }
         }
