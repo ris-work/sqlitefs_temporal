@@ -79,7 +79,7 @@ fn main() {
                 None => {
                     debug!("Rewind is not requested; proceeding as-is.");
                     if(db_read_only){
-                        fs = match SqliteFs::new(path) {
+                        fs = match SqliteFs::new_read_only(path) {
                             Ok(n) => n,
                             Err(err) => {println!("{:?}", err); return;}
                         };
