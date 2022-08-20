@@ -104,6 +104,7 @@ impl SqliteFs {
         })
     }
     pub fn new_at_time(path: &str, time: String) -> Result<SqliteFs, Error> {
+        debug!{"Requested rewind to time: {}", time};
         let time_init = time.clone();
         let mut db = match Sqlite::new_at_time(Path::new(path), time_init) {
             Ok(n) => n,
