@@ -90,8 +90,8 @@ impl SqliteFs {
         let lookup_count = Arc::new(Mutex::new(HashMap::<u32, u32>::new()));
         let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
-        const read_only: bool = false;
-        const rewind: bool = false;
+        let read_only: bool = false;
+        let rewind: bool = false;
         let time: String = "".to_string();
         Ok(SqliteFs {
             db,
@@ -113,8 +113,8 @@ impl SqliteFs {
         let lookup_count = Arc::new(Mutex::new(HashMap::<u32, u32>::new()));
         let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
-        const read_only: bool = true;
-        const rewind: bool = true;
+        let read_only: bool = true;
+        let rewind: bool = true;
         Ok(SqliteFs {
             db,
             lookup_count,
@@ -135,8 +135,8 @@ impl SqliteFs {
         let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
         let time: String = "".to_string();
-        const read_only: bool = true;
-        const rewind: bool = false;
+        let read_only: bool = true;
+        let rewind: bool = false;
         Ok(SqliteFs {
             db,
             lookup_count,
@@ -152,8 +152,8 @@ impl SqliteFs {
         let lookup_count = Arc::new(Mutex::new(HashMap::<u32, u32>::new()));
         let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
-        const read_only: bool = false;
-        const rewind: bool = false;
+        let read_only: bool = false;
+        let rewind: bool = false;
         let time: String = "".to_string();
         Ok(SqliteFs {
             db,
