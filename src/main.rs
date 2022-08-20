@@ -10,6 +10,7 @@ use sqlite_fs::db_module::DbModule;
 use sqlite_fs::filesystem::SqliteFs;
 use std::env;
 use std::ffi::OsStr;
+#[allow(unused_parens)]
 
 fn main() {
     env_logger::init();
