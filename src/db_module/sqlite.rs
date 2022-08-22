@@ -1083,7 +1083,7 @@ impl DbModule for Sqlite {
         let stmt = tx.prepare(sql)?;
         let params = params![parent, name];
         let result = parse_attr(stmt, params);
-        update_atime(parent, Utc::now(), &tx)?;
+        //update_atime(parent, Utc::now(), &tx)?;
         tx.commit()?;
         result
     }
