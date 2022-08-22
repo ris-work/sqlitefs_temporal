@@ -184,6 +184,7 @@ fn get_inode_local(inode: u32, tx: &Connection) -> Result<Option<DBFileAttr>> {
             WHERE id=$1";
     let stmt = tx.prepare(sql)?;
     let params = params![inode];
+    println!("Runnign {} with {}", sql, inode);
     parse_attr(stmt, params)
 }
 fn get_inode_local_at_time(
@@ -191,31 +192,34 @@ fn get_inode_local_at_time(
     tx: &Connection,
     time: String,
 ) -> Result<Option<DBFileAttr>> {
+    println!{"get_inode_local_at_time called: {} {}", inode, time};
     let sql = "SELECT \
-            metadata.id,\
-            metadata.size,\
-            metadata.atime,\
-            metadata.atime_nsec,\
-            metadata.mtime,\
-            metadata.mtime_nsec,\
-            metadata.ctime,\
-            metadata.ctime_nsec,\
-            metadata.crtime,\
-            metadata.crtime_nsec,\
-            metadata.kind, \
-            metadata.mode,\
+            tmetadata.id,\
+            tmetadata.size,\
+            tmetadata.atime,\
+            tmetadata.atime_nsec,\
+            tmetadata.mtime,\
+            tmetadata.mtime_nsec,\
+            tmetadata.ctime,\
+            tmetadata.ctime_nsec,\
+            tmetadata.crtime,\
+            tmetadata.crtime_nsec,\
+            tmetadata.kind, \
+            tmetadata.mode,\
             ncount.nlink,\
-            metadata.uid,\
-            metadata.gid,\
-            metadata.rdev,\
-            metadata.flags,\
+            tmetadata.uid,\
+            tmetadata.gid,\
+            tmetadata.rdev,\
+            tmetadata.flags,\
             blocknum.block_num \
             FROM tmetadata \
             LEFT JOIN (SELECT count(block_num) block_num FROM tdata WHERE file_id=$1) AS blocknum \
             LEFT JOIN ( SELECT COUNT(child_id) nlink FROM tdentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
             WHERE id=$1";
     let stmt = tx.prepare(sql)?;
+    println!{"Statement prepared"};
     let params = params![inode];
+    println!("Runnign {} with {}", sql, inode);
     parse_attr(stmt, params)
 }
 
@@ -371,10 +375,10 @@ impl Sqlite {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
-        conn.execute("CREATE TEMP TABLE tdentry_audit AS SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) GROUP BY name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tmetadata_audit AS SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) GROUP BY id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tdata_audit AS SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) GROUP BY file_id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE txattr_audit AS SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) GROUP BY file_id, name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
+        conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) GROUP BY name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) GROUP BY id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) GROUP BY file_id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) GROUP BY file_id, name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
         Ok(Sqlite { conn })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
@@ -714,7 +718,12 @@ impl DbModule for Sqlite {
         get_inode_local(inode, &self.conn)
     }
     fn get_inode_at_time(&self, inode: u32, time: String) -> Result<Option<DBFileAttr>> {
-        get_inode_local_at_time(inode, &self.conn, time)
+    println!{"get_inode_at_time: {}, {}", inode, time};
+        let r = get_inode_local_at_time(inode, &self.conn, time);
+        match r {
+            Err(ref x) => {println!{"ERROR: {}", format!("{}", x)}; return r},
+            Ok(x) => return r
+        }
     }
 
     fn add_inode_and_dentry(&mut self, parent: u32, name: &str, attr: &DBFileAttr) -> Result<u32> {
