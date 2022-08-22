@@ -82,8 +82,8 @@ fn main() {
         .collect::<Vec<&OsStr>>();
     let fs: SqliteFs;
     debug!("read-only: {}", db_read_only);
-    if(db_time.is_some()){
-    debug!("db_time: {}", db_time.unwrap());
+    if (db_time.is_some()) {
+        debug!("db_time: {}", db_time.unwrap());
     }
     match db_path {
         Some(path) => match db_time {
