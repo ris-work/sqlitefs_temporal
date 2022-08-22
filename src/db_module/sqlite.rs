@@ -1051,23 +1051,23 @@ impl DbModule for Sqlite {
         time: String,
     ) -> Result<Option<DBFileAttr>> {
         let sql = "SELECT \
-            metadata.id,\
-            metadata.size,\
-            metadata.atime,\
-            metadata.atime_nsec,\
-            metadata.mtime,\
-            metadata.mtime_nsec,\
-            metadata.ctime,\
-            metadata.ctime_nsec,\
-            metadata.crtime,\
-            metadata.crtime_nsec,\
-            metadata.kind, \
-            metadata.mode,\
+            tmetadata.id,\
+            tmetadata.size,\
+            tmetadata.atime,\
+            tmetadata.atime_nsec,\
+            tmetadata.mtime,\
+            tmetadata.mtime_nsec,\
+            tmetadata.ctime,\
+            tmetadata.ctime_nsec,\
+            tmetadata.crtime,\
+            tmetadata.crtime_nsec,\
+            tmetadata.kind, \
+            tmetadata.mode,\
             ncount.nlink,\
-            metadata.uid,\
-            metadata.gid,\
-            metadata.rdev,\
-            metadata.flags, \
+            tmetadata.uid,\
+            tmetadata.gid,\
+            tmetadata.rdev,\
+            tmetadata.flags, \
             blocknum.block_num \
             FROM tdentry \
             INNER JOIN tmetadata \
