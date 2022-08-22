@@ -192,7 +192,7 @@ fn get_inode_local_at_time(
     tx: &Connection,
     time: String,
 ) -> Result<Option<DBFileAttr>> {
-    println!{"get_inode_local_at_time called: {} {}", inode, time};
+    println! {"get_inode_local_at_time called: {} {}", inode, time};
     let sql = "SELECT \
             tmetadata.id,\
             tmetadata.size,\
@@ -217,7 +217,7 @@ fn get_inode_local_at_time(
             LEFT JOIN ( SELECT COUNT(child_id) nlink FROM tdentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
             WHERE id=$1";
     let stmt = tx.prepare(sql)?;
-    println!{"Statement prepared"};
+    println! {"Statement prepared"};
     let params = params![inode];
     println!("Runnign {} with {}", sql, inode);
     parse_attr(stmt, params)
@@ -718,11 +718,14 @@ impl DbModule for Sqlite {
         get_inode_local(inode, &self.conn)
     }
     fn get_inode_at_time(&self, inode: u32, time: String) -> Result<Option<DBFileAttr>> {
-    println!{"get_inode_at_time: {}, {}", inode, time};
+        println! {"get_inode_at_time: {}, {}", inode, time};
         let r = get_inode_local_at_time(inode, &self.conn, time);
         match r {
-            Err(ref x) => {println!{"ERROR: {}", format!("{}", x)}; return r},
-            Ok(x) => return r
+            Err(ref x) => {
+                println! {"ERROR: {}", format!("{}", x)};
+                return r;
+            }
+            Ok(x) => return r,
         }
     }
 
