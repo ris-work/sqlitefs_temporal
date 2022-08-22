@@ -375,10 +375,10 @@ impl Sqlite {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
-        conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) GROUP BY name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) GROUP BY id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) GROUP BY file_id ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) GROUP BY file_id, name ORDER BY timestamp_utc DESC) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
+        conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY name) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY id) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY file_id) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY file_id, name) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
         Ok(Sqlite { conn })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
