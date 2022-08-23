@@ -70,6 +70,8 @@ fn main() {
         }
     }
 
+    const LICENSE: &str = include_str!("../LICENSE.txt");
+
     let mountpoint = matches
         .value_of("mount_point")
         .expect("Mount point path is missing.");
