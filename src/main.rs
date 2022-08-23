@@ -42,6 +42,11 @@ fn main() {
         .long("read-only")
         .help("Mount as read-only.");
 
+    let license_arg = Arg::with_name("display_license")
+        .short("L")
+        .long("license")
+        .help("Display the license.");
+
     let matches = App::new("sqlitefs")
         .about("Sqlite database as a filesystem.")
         .version(crate_version!())
@@ -50,6 +55,7 @@ fn main() {
         .arg(db_path_arg)
         .arg(db_time_arg)
         .arg(db_read_only_arg)
+        .arg(license_arg)
         .get_matches();
 
     let mut option_vals = [
