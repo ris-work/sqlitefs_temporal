@@ -1085,7 +1085,7 @@ impl DbModule for Sqlite {
             LEFT JOIN (SELECT file_id file_id, count(block_num) block_num from tdata) AS blocknum \
             ON tdentry.child_id = blocknum.file_id \
             LEFT JOIN ( SELECT child_id, COUNT(child_id) nlink FROM tdentry GROUP BY child_id) AS ncount \
-            ON tdentry.child_id = ncount.child_id \
+            ON tdentry.child_id = ncount.child_id WHERE ncount <> NULL \
             ";
         let tx = self.conn.transaction()?;
         let stmt = tx.prepare(sql)?;
