@@ -215,7 +215,7 @@ fn get_inode_local_at_time(
             FROM tmetadata \
             LEFT JOIN (SELECT count(block_num) block_num FROM tdata WHERE file_id=$1) AS blocknum \
             LEFT JOIN ( SELECT COUNT(child_id) nlink FROM tdentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
-            WHERE id=$1";
+            WHERE id=$1 AND ncount.nlink IS NOT NULL";
     let stmt = tx.prepare(sql)?;
     debug! {"Statement prepared for get_inode_at_time."};
     let params = params![inode];
@@ -380,8 +380,8 @@ impl Sqlite {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
-        conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY name) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY id) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY parent_id, child_id, name HAVING timestamp_utc = max(timestamp_utc)) as t WHERE TG_OP <> 'DELETE';", params![time])?;
+        conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY id HAVING timestamp_utc=max(timestamp_utc)) as t WHERE TG_OP <> 'DELETE';", params![time])?;
         conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY file_id) as t WHERE TG_OP <> 'DELETE';", params![time])?;
         conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY file_id, name) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
         Ok(Sqlite { conn })
@@ -1085,7 +1085,7 @@ impl DbModule for Sqlite {
             LEFT JOIN (SELECT file_id file_id, count(block_num) block_num from tdata) AS blocknum \
             ON tdentry.child_id = blocknum.file_id \
             LEFT JOIN ( SELECT child_id, COUNT(child_id) nlink FROM tdentry GROUP BY child_id) AS ncount \
-            ON tdentry.child_id = ncount.child_id WHERE ncount <> NULL \
+            ON tdentry.child_id = ncount.child_id \
             ";
         let tx = self.conn.transaction()?;
         let stmt = tx.prepare(sql)?;
