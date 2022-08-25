@@ -389,6 +389,7 @@ impl Sqlite {
         conn.execute("CREATE TEMP TABLE tmetadata_audit_entries WHERE timestamp_utc < (?1);", params![time])?;
         conn.execute("CREATE TEMP TABLE tdata_audit_entries WHERE timestamp_utc < (?1);", params![time])?;
         conn.execute("CREATE TEMP TABLE txattr_audit_entries WHERE timestamp_utc < (?1);", params![time] )?;
+        //STRATEGY: (SELECT  max(timestamp) utc, CK/PK FROM table GROUP BY CK/PK) as latest, join on max_ts, CK/PK with table's.
         Ok(Sqlite { conn })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
