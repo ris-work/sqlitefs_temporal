@@ -1,5 +1,5 @@
-Copyright (c) RISHIKESHAN 🌱 <oss@rishikeshan.com>
-பதிப்புரிமை (c) RISHIKESHAN 🌱 <oss@rishikeshan.com>
+Copyright (c) 2020 RISHIKESHAN 🌱 <oss@rishikeshan.com>
+பதிப்புரிமை (c) 2020 ரிஷிகேசன் 🌱 <oss@rishikeshan.com>
 This software is tri-licensed under 
 the Mozilla Public License version 2.0 only (i.e. no later versions), incompatible with secondary licenses or 
 the Microsoft Public License or
