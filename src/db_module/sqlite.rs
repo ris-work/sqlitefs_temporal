@@ -380,12 +380,10 @@ impl Sqlite {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
-        conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (SELECT * FROM (select * from dentry_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY parent_id, child_id, name WHERE timestamp_utc = max(timestamp_utc)) as t WHERE TG_OP <> 'DELETE';", params![time])?;
         conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY id ) as t WHERE TG_OP <> 'DELETE';", params![time])?;
         conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY file_id) as t WHERE TG_OP <> 'DELETE';", params![time])?;
         conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (SELECT * FROM (select * from xattr_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY file_id, name) as t WHERE TG_OP <> 'DELETE';", params![time] )?;
         conn.execute("DROP TABLE tdata;", NO_PARAMS )?;
-        conn.execute("DROP TABLE tdentry;", NO_PARAMS )?;
         //ATTEMPT TO REMOVE ALL BARE COLUMNS
         conn.execute("CREATE TEMP TABLE tdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < (?1);", params![time])?;
         conn.execute("CREATE TEMP TABLE tmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < (?1);", params![time])?;
@@ -393,7 +391,7 @@ impl Sqlite {
         conn.execute("CREATE TEMP TABLE txattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < (?1);", params![time] )?;
         //STRATEGY: (SELECT  max(timestamp) utc, CK/PK FROM table GROUP BY CK/PK) as latest, join on max_ts, CK/PK with table's.
         //conn.execute("CREATE TEMP TABLE txattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < (?1);", params![time] )?;
-        conn.execute("CREATE TEMP TABLE tdentry as SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM tdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN tdentry_audit_entries ON tdentry_audit_entries.timestamp_utc=max_ts AND tdentry_audit_entries.child_id=latest.child_id AND tdentry_audit_entries.name = LAtest.name AND tdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';", NO_PARAMS)?;
+        conn.execute("CREATE TEMP TABLE tdentry as SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, tdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM tdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN tdentry_audit_entries ON tdentry_audit_entries.timestamp_utc=max_ts AND tdentry_audit_entries.child_id=latest.child_id AND tdentry_audit_entries.name = LAtest.name AND tdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';", NO_PARAMS)?;
         conn.execute("CREATE TEMP TABLE tdata as SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, tdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM tdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN tdata_audit_entries ON tdata_audit_entries.timestamp_utc=max_ts AND tdata_audit_entries.file_id=latest.file_id AND tdata_audit_entries.block_num = LAtest.block_num) WHERE TG_OP IS NOT 'DELETE';", NO_PARAMS)?;
         Ok(Sqlite { conn })
     }
