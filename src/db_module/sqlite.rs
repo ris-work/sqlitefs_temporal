@@ -390,6 +390,9 @@ impl Sqlite {
         conn.execute("CREATE TEMP TABLE tdata_audit_entries AS SELECT * FROM data_audit WHERE timestamp_utc < (?1);", params![time])?;
         conn.execute("CREATE TEMP TABLE txattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < (?1);", params![time] )?;
         //STRATEGY: (SELECT  max(timestamp) utc, CK/PK FROM table GROUP BY CK/PK) as latest, join on max_ts, CK/PK with table's.
+        //conn.execute("CREATE TEMP TABLE txattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < (?1);", params![time] )?;
+        conn.execute("CREATE TEMP TABLE tdentry as SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM tdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN tdentry_audit_entries ON tdentry_audit_entries.timestamp_utc=max_ts AND tdentry_audit_entries.child_id=latest.child_id AND tdentry_audit_entries.name = LAtest.name AND tdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';", NO_PARAMS)?;
+        //conn.execute("CREATE TEMP TABLE tdentry as SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM tdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN tdentry_audit_entries ON tdentry_audit_entries.timestamp_utc=max_ts AND tdentry_audit_entries.child_id=latest.child_id AND tdentry_audit_entries.name = LAtest.name AND tdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';", NO_PARAMS)?;
         Ok(Sqlite { conn })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
