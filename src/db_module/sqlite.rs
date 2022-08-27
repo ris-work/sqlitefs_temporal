@@ -250,7 +250,7 @@ fn get_dentry_single_at_time(
     parent: u32,
     name: &str,
     tx: &Connection,
-    time: String,
+    _time: String,
 ) -> Result<Option<DEntry>> {
     let sql = "SELECT child_id, file_type FROM tdentry WHERE  parent_id=$1 and name=$2";
     let mut stmt = tx.prepare(sql)?;
@@ -869,7 +869,7 @@ impl DbModule for Sqlite {
         }
         Ok(entries)
     }
-    fn get_dentry_at_time(&self, inode: u32, time: String) -> Result<Vec<DEntry>> {
+    fn get_dentry_at_time(&self, inode: u32, _time: String) -> Result<Vec<DEntry>> {
         let sql = "SELECT child_id, file_type, name FROM tdentry WHERE parent_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| {
