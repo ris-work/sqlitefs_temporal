@@ -47,7 +47,7 @@ fn main() {
         .long("license")
         .help("Display the license.");
 
-    let matches = App::new("sqlitefs")
+    let matches = App::new("temporal-sqlite-fs")
         .about("Sqlite database as a filesystem.")
         .version(crate_version!())
         .arg(mount_option_arg)
@@ -60,7 +60,7 @@ fn main() {
 
     let mut option_vals = [
         "-o",
-        "fsname=sqlitefs",
+        "fsname=temporal-sqlite-fs",
         "-o",
         "default_permissions",
         "-o",
