@@ -1131,7 +1131,9 @@ impl Filesystem for SqliteFs {
     ) {
         let ino = ino as u32;
         let name = name.to_str().unwrap();
-        let value = match self.db.get_xattr(ino, name) {
+        let value;
+        if(!self.rewind){
+        value = match self.db.get_xattr(ino, name) {
             Ok(n) => n,
             Err(err) => {
                 reply.error(ENODATA);
@@ -1139,6 +1141,17 @@ impl Filesystem for SqliteFs {
                 return;
             }
         };
+        }
+        else{
+        value = match self.db.get_xattr_at_time(ino, name, self.time.clone()) {
+            Ok(n) => n,
+            Err(err) => {
+                reply.error(ENODATA);
+                debug!("{}", err);
+                return;
+            }
+        };
+        }
         if size == 0 {
             reply.size(value.len() as u32);
         } else if size < value.len() as u32 {
@@ -1150,7 +1163,9 @@ impl Filesystem for SqliteFs {
 
     fn listxattr(&mut self, _req: &Request<'_>, ino: u64, size: u32, reply: ReplyXattr) {
         let ino = ino as u32;
-        let names = match self.db.list_xattr(ino) {
+        let names;
+        if(!self.rewind){
+        names = match self.db.list_xattr(ino) {
             Ok(n) => n,
             Err(err) => {
                 reply.error(ENODATA);
@@ -1158,6 +1173,17 @@ impl Filesystem for SqliteFs {
                 return;
             }
         };
+        }
+        else{
+        names = match self.db.list_xattr_at_time(ino, self.time.clone()) {
+            Ok(n) => n,
+            Err(err) => {
+                reply.error(ENODATA);
+                debug!("{}", err);
+                return;
+            }
+        };
+        }
         let mut data: Vec<u8> = Vec::new();
         for v in names {
             data.extend(v.bytes());
