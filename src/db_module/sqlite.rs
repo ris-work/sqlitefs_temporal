@@ -1200,7 +1200,7 @@ impl DbModule for Sqlite {
     fn get_db_block_size(&self) -> u32 {
         BLOCK_SIZE
     }
-    fn get_db_block_size_at_time(&self, time: String) -> u32 {
+    fn get_db_block_size_at_time(&self, _time: String) -> u32 {
         BLOCK_SIZE
     }
 
@@ -1239,7 +1239,7 @@ impl DbModule for Sqlite {
         };
         Ok(row)
     }
-    fn get_xattr_at_time(&self, inode: u32, key: &str, time: String) -> Result<Vec<u8>> {
+    fn get_xattr_at_time(&self, inode: u32, key: &str, _time: String) -> Result<Vec<u8>> {
         let mut stmt = self.conn.prepare(
             "SELECT \
             value FROM txattr WHERE file_id=$1 AND name=$2",
@@ -1269,7 +1269,7 @@ impl DbModule for Sqlite {
         }
         Ok(name_list)
     }
-    fn list_xattr_at_time(&self, inode: u32, time: String) -> Result<Vec<String>> {
+    fn list_xattr_at_time(&self, inode: u32, _time: String) -> Result<Vec<String>> {
         let sql = "SELECT name FROM txattr WHERE file_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| Ok(row.get(0)?))?;
