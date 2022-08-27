@@ -380,11 +380,6 @@ impl Sqlite {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", NO_PARAMS)?;
-        conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT * FROM (select * from metadata_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY id ) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (SELECT * FROM (select * from data_audit WHERE timestamp_utc < (?1) ORDER BY timestamp_utc DESC) GROUP BY file_id) as t WHERE TG_OP <> 'DELETE';", params![time])?;
-        conn.execute("DROP TABLE tdata;", NO_PARAMS )?;
-        conn.execute("DROP TABLE tmetadata;", NO_PARAMS )?;
-        //ATTEMPT TO REMOVE ALL BARE COLUMNS
         conn.execute("CREATE TEMP TABLE tdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < (?1);", params![time])?;
         conn.execute("CREATE TEMP TABLE tmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < (?1);", params![time])?;
         conn.execute("CREATE TEMP TABLE tdata_audit_entries AS SELECT * FROM data_audit WHERE timestamp_utc < (?1);", params![time])?;
