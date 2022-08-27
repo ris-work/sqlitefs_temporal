@@ -4,7 +4,7 @@ use crate::sqerror::{Error, ErrorKind, Result};
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
 use fuse::FileType;
 use rusqlite::types::ToSql;
-use rusqlite::{params, Connection, Statement, NO_PARAMS};
+use rusqlite::{params, Connection, Statement};
 use std::path::Path;
 use std::time::SystemTime;
 
