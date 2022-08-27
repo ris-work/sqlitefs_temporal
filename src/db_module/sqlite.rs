@@ -246,33 +246,6 @@ fn get_dentry_single(parent: u32, name: &str, tx: &Connection) -> Result<Option<
     };
     Ok(res)
 }
-fn get_dentry_single_at_time(
-    parent: u32,
-    name: &str,
-    tx: &Connection,
-    _time: String,
-) -> Result<Option<DEntry>> {
-    let sql = "SELECT child_id, file_type FROM tdentry WHERE  parent_id=$1 and name=$2";
-    let mut stmt = tx.prepare(sql)?;
-    let res: Option<DEntry> = match stmt.query_row(params![parent, name], |row| {
-        Ok(Some(DEntry {
-            parent_ino: parent,
-            child_ino: row.get(0)?,
-            file_type: const_to_file_type(row.get(1)?),
-            filename: name.to_string(),
-        }))
-    }) {
-        Ok(n) => n,
-        Err(err) => {
-            if err == rusqlite::Error::QueryReturnedNoRows {
-                None
-            } else {
-                return Err(Error::from(err));
-            }
-        }
-    };
-    Ok(res)
-}
 
 fn delete_dentry_local(parent: u32, name: &str, tx: &Connection) -> Result<()> {
     if (!(name == ".." || name == ".")) {
