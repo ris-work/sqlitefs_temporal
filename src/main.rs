@@ -85,7 +85,7 @@ fn main() {
     let db_time = matches.value_of("at_time");
     let db_read_only: bool = matches.is_present("read_only");
     let display_license: bool = matches.is_present("display_license");
-    if(display_license){
+    if (display_license) {
         println!("{}", LICENSE)
     }
     let options = option_vals
