@@ -71,7 +71,7 @@ impl From<rusqlite::Error> for Error {
     fn from(err: rusqlite::Error) -> Error {
         Error {
             inner: Context::new(ErrorKind::SqliteError {
-                description: String::from(format!("{} {:?}", err.description(), err)),
+                description: String::from(format!("{} {:?}", err, err)),
             }),
         }
     }

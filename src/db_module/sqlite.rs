@@ -736,7 +736,7 @@ impl DbModule for Sqlite {
                 debug! {"ERROR: {}", format!("{}", x)};
                 return r;
             }
-            Ok(x) => return r,
+            Ok(_) => return r,
         }
     }
 
