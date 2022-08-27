@@ -1062,7 +1062,7 @@ impl DbModule for Sqlite {
         &mut self,
         parent: u32,
         name: &str,
-        time: String,
+        _time: String,
     ) -> Result<Option<DBFileAttr>> {
         let sql = "SELECT \
             tmetadata.id,\
@@ -1130,7 +1130,7 @@ impl DbModule for Sqlite {
         inode: u32,
         block: u32,
         length: u32,
-        time: String,
+        _time: String,
     ) -> Result<Vec<u8>> {
         let tx = self.conn.transaction()?;
         let row: Vec<u8>;
