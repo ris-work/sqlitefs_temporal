@@ -1,3 +1,4 @@
+#![allow(unused_parens)]
 use crate::db_module::{DBFileAttr, DEntry, DbModule};
 use crate::sqerror::{Error, ErrorKind, Result};
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
