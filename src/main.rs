@@ -5,9 +5,9 @@ extern crate log;
 #[macro_use]
 extern crate clap;
 use clap::{App, Arg};
-use sqlite_fs::db_module::sqlite::Sqlite;
-use sqlite_fs::db_module::DbModule;
-use sqlite_fs::filesystem::SqliteFs;
+use sqlite_temporal_fs::db_module::sqlite::Sqlite;
+use sqlite_temporal_fs::db_module::DbModule;
+use sqlite_temporal_fs::filesystem::SqliteFs;
 use std::env;
 use std::ffi::OsStr;
 #[allow(unused_parens)]
