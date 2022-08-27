@@ -274,12 +274,11 @@ fn get_dentry_single_at_time(
 }
 
 fn delete_dentry_local(parent: u32, name: &str, tx: &Connection) -> Result<()> {
-    if(!(name==".." || name == ".")){
-    let sql = "DELETE FROM dentry WHERE parent_id=$1 and name=$2";
-    tx.execute(sql, params![parent, name])?;
-    }
-    else {
-        debug!{"Prevented the removal of {}", name};
+    if (!(name == ".." || name == ".")) {
+        let sql = "DELETE FROM dentry WHERE parent_id=$1 and name=$2";
+        tx.execute(sql, params![parent, name])?;
+    } else {
+        debug! {"Prevented the removal of {}", name};
     }
     Ok(())
 }
