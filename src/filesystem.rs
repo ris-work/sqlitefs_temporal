@@ -842,7 +842,7 @@ impl Filesystem for SqliteFs {
             let offset = offset as u32;
             let start_block = offset / block_size + 1;
             let end_block = (offset + size - 1) / block_size + 1;
-            println!("Incoming write, size: {}", size);
+            debug!("Incoming write, size: {}", size);
             for i in start_block..=end_block {
                 println!("Writing, i = {}", i);
                 let mut block_data: Vec<u8> = Vec::with_capacity(block_size as usize);
@@ -857,7 +857,7 @@ impl Filesystem for SqliteFs {
                 } else {
                     block_size
                 };
-                println!("{} {} {}", i, start_block, offset % block_size);
+                debug!("{} {} {}", i, start_block, offset % block_size);
                 let data_offset;
                 if (i > start_block) {
                     //HERE WAS THE BUG
@@ -881,11 +881,11 @@ impl Filesystem for SqliteFs {
                     if b_start_index != 0 {
                         block_data.extend_from_slice(&data_pre[0..b_start_index as usize]);
                     }
-                    println!(
+                    debug!(
                         "b_start_index, b_end_index: [{} {}]",
                         b_start_index as usize, b_end_index as usize
                     );
-                    println!(
+                    debug!(
                         "block_data.extend_from_slice: &data [{} {}], of length: {}",
                         data_offset as usize,
                         (data_offset + b_end_index - b_start_index),
