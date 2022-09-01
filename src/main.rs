@@ -14,7 +14,7 @@ fn main() {
     env_logger::init();
 
     let mount_option_arg = Arg::with_name("mount_option")
-        .short("o")
+        .short('o')
         .long("option")
         .help("Additional mount option for this filesystem")
         .takes_value(true)
@@ -30,18 +30,18 @@ fn main() {
         .index(2);
 
     let db_time_arg = Arg::with_name("at_time")
-        .short("t")
+        .short('t')
         .long("time")
         .help("Sqlite database time to rewind to. If specified, implies read-only.")
         .takes_value(true);
 
     let db_read_only_arg = Arg::with_name("read_only")
-        .short("r")
+        .short('r')
         .long("read-only")
         .help("Mount as read-only.");
 
     let license_arg = Arg::with_name("display_license")
-        .short("L")
+        .short('L')
         .long("license")
         .help("Display the license.");
 
@@ -64,7 +64,7 @@ fn main() {
         "-o",
         "allow_other",
         "-o",
-        "read_only",
+        "max_write=128",
     ]
     .to_vec();
     if let Some(v) = matches.values_of("mount_option") {
