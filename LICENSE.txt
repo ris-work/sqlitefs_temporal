@@ -1,6 +1,7 @@
-Copyright (c) RISHIKESHAN <oss@rishikeshan.com>
+Copyright (c) 2022 RISHIKESHAN 🌱 <oss@rishikeshan.com>
+பதிப்புரிமை (c) 2022 ரிஷிகேசன் 🌱 <oss@rishikeshan.com>
 This software is tri-licensed under 
-the Mozilla Public License version 2.0 only, incompatible with secondary licenses or 
+the Mozilla Public License version 2.0 only (i.e. no later versions), incompatible with secondary licenses or 
 the Microsoft Public License or
 the Enhanced MIT license by Wix
 
