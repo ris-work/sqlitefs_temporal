@@ -842,8 +842,11 @@ impl Filesystem for SqliteFs {
             let offset = offset as u32;
             let start_block = offset / block_size + 1;
             let end_block = (offset + size - 1) / block_size + 1;
+            debug!("Incoming write, size: {}", size);
             for i in start_block..=end_block {
+                println!("Writing, i = {}", i);
                 let mut block_data: Vec<u8> = Vec::with_capacity(block_size as usize);
+                let block_start_offset = offset % block_size;
                 let b_start_index = if i == start_block {
                     offset % block_size
                 } else {
@@ -854,7 +857,15 @@ impl Filesystem for SqliteFs {
                 } else {
                     block_size
                 };
-                let data_offset = (i - start_block) * block_size;
+                debug!("{} {} {}", i, start_block, offset % block_size);
+                let data_offset;
+                if (i > start_block) {
+                    //HERE WAS THE BUG
+                    data_offset =
+                        ((i - start_block - 1) * block_size) + (block_size) - offset % block_size;
+                } else {
+                    data_offset = 0;
+                }
                 if (b_start_index != 0) || (b_end_index != block_size) {
                     let mut data_pre = match self.db.get_data(ino, i, block_size) {
                         Ok(n) => n,
@@ -870,6 +881,16 @@ impl Filesystem for SqliteFs {
                     if b_start_index != 0 {
                         block_data.extend_from_slice(&data_pre[0..b_start_index as usize]);
                     }
+                    debug!(
+                        "b_start_index, b_end_index: [{} {}]",
+                        b_start_index as usize, b_end_index as usize
+                    );
+                    debug!(
+                        "block_data.extend_from_slice: &data [{} {}], of length: {}",
+                        data_offset as usize,
+                        (data_offset + b_end_index - b_start_index),
+                        &data.len()
+                    );
                     block_data.extend_from_slice(
                         &data[data_offset as usize
                             ..(data_offset + b_end_index - b_start_index) as usize],
@@ -1132,25 +1153,24 @@ impl Filesystem for SqliteFs {
         let ino = ino as u32;
         let name = name.to_str().unwrap();
         let value;
-        if(!self.rewind){
-        value = match self.db.get_xattr(ino, name) {
-            Ok(n) => n,
-            Err(err) => {
-                reply.error(ENODATA);
-                debug!("{}", err);
-                return;
-            }
-        };
-        }
-        else{
-        value = match self.db.get_xattr_at_time(ino, name, self.time.clone()) {
-            Ok(n) => n,
-            Err(err) => {
-                reply.error(ENODATA);
-                debug!("{}", err);
-                return;
-            }
-        };
+        if (!self.rewind) {
+            value = match self.db.get_xattr(ino, name) {
+                Ok(n) => n,
+                Err(err) => {
+                    reply.error(ENODATA);
+                    debug!("{}", err);
+                    return;
+                }
+            };
+        } else {
+            value = match self.db.get_xattr_at_time(ino, name, self.time.clone()) {
+                Ok(n) => n,
+                Err(err) => {
+                    reply.error(ENODATA);
+                    debug!("{}", err);
+                    return;
+                }
+            };
         }
         if size == 0 {
             reply.size(value.len() as u32);
@@ -1164,25 +1184,24 @@ impl Filesystem for SqliteFs {
     fn listxattr(&mut self, _req: &Request<'_>, ino: u64, size: u32, reply: ReplyXattr) {
         let ino = ino as u32;
         let names;
-        if(!self.rewind){
-        names = match self.db.list_xattr(ino) {
-            Ok(n) => n,
-            Err(err) => {
-                reply.error(ENODATA);
-                debug!("{}", err);
-                return;
-            }
-        };
-        }
-        else{
-        names = match self.db.list_xattr_at_time(ino, self.time.clone()) {
-            Ok(n) => n,
-            Err(err) => {
-                reply.error(ENODATA);
-                debug!("{}", err);
-                return;
-            }
-        };
+        if (!self.rewind) {
+            names = match self.db.list_xattr(ino) {
+                Ok(n) => n,
+                Err(err) => {
+                    reply.error(ENODATA);
+                    debug!("{}", err);
+                    return;
+                }
+            };
+        } else {
+            names = match self.db.list_xattr_at_time(ino, self.time.clone()) {
+                Ok(n) => n,
+                Err(err) => {
+                    reply.error(ENODATA);
+                    debug!("{}", err);
+                    return;
+                }
+            };
         }
         let mut data: Vec<u8> = Vec::new();
         for v in names {
