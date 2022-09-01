@@ -437,11 +437,11 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_delete_metadata AFTER DELETE on metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
-                    OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
-                    OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
-                    OLD.crtime, OLD.crtime_nsec, \
-                    OLD.kind, OLD.mode, OLD.nlink, \
-                    OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
+                    OLD.id, OLD.size, NULL, NULL, \
+                    NULL, NULL, NULL, NULL, \
+                    NULL, NULL, \
+                    NULL, NULL, OLD.nlink, \
+                    NULL, NULL, NULL, NULL); \
                 END \
                 ";
                 let res_audit_trigger_delete =
@@ -561,7 +561,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_delete_data AFTER DELETE on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
-                    OLD.file_id, OLD.block_num, OLD.data \
+                    OLD.file_id, OLD.block_num, NULL \
                     ); \
                 END \
                 ";
