@@ -340,18 +340,21 @@ fn add_inode_local(attr: &DBFileAttr, tx: &Connection) -> Result<u32> {
 
 pub struct Sqlite {
     conn: Connection,
+    read_only: bool,
 }
 
 impl Sqlite {
     pub fn new(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
+        let read_only=false;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        Ok(Sqlite { conn })
+        Ok(Sqlite { conn, read_only })
     }
     pub fn new_at_time(path: &Path, time: String) -> Result<Self> {
         let conn = Connection::open(path)?;
+        let read_only=true;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("CREATE TEMP TABLE tdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < (?1);", params![time])?;
@@ -364,19 +367,21 @@ impl Sqlite {
         conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, tdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM tdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN tdata_audit_entries ON tdata_audit_entries.timestamp_utc=max_ts AND tdata_audit_entries.file_id=latest.file_id AND tdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE';", [])?;
         conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (SELECT max_ts, latest.name, latest.file_id, txattr_audit_entries.name, txattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM txattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN txattr_audit_entries ON txattr_audit_entries.timestamp_utc=max_ts AND txattr_audit_entries.file_id=latest.file_id AND txattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE';", [])?;
         conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT max_ts, tmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM tmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN tmetadata_audit_entries ON tmetadata_audit_entries.timestamp_utc=max_ts AND tmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';", [])?;
-        Ok(Sqlite { conn })
+        Ok(Sqlite { conn, read_only })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
+        let read_only=true;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
-        Ok(Sqlite { conn })
+        Ok(Sqlite { conn, read_only })
     }
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
+        let read_only=false;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
-        Ok(Sqlite { conn })
+        Ok(Sqlite { conn, read_only })
     }
 }
 
@@ -1095,7 +1100,9 @@ impl DbModule for Sqlite {
                 }
             };
         }
+        if(!self.read_only){
         update_atime(inode, Utc::now(), &tx)?;
+        }
         tx.commit()?;
         Ok(row)
     }

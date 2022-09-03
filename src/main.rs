@@ -64,7 +64,9 @@ fn main() {
         "-o",
         "allow_other",
         "-o",
-        "max_write=128",
+        "max_write=16384",
+        "-o",
+        "max_read=16384",
     ]
     .to_vec();
     if let Some(v) = matches.values_of("mount_option") {
