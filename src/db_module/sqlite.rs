@@ -16,7 +16,7 @@ const DB_IFREG: u32 = 0o0_100_000;
 const DB_IFLNK: u32 = 0o0_120_000;
 const DB_IFSOCK: u32 = 0o0_140_000;
 
-const BLOCK_SIZE: u32 = 512;
+const BLOCK_SIZE: u32 = 4096;
 
 fn string_to_systemtime(text: String, nsec: u32) -> SystemTime {
     SystemTime::from(DateTime::<Utc>::from_utc(
@@ -347,6 +347,7 @@ impl Sqlite {
         let conn = Connection::open(path)?;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
+        conn.execute("PRAGMA cache_size=-16384", [])?;
         Ok(Sqlite { conn })
     }
     pub fn new_at_time(path: &Path, time: String) -> Result<Self> {
