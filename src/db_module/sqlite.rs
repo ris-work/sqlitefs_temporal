@@ -16,7 +16,7 @@ const DB_IFREG: u32 = 0o0_100_000;
 const DB_IFLNK: u32 = 0o0_120_000;
 const DB_IFSOCK: u32 = 0o0_140_000;
 
-const BLOCK_SIZE: u32 = 64;
+const BLOCK_SIZE: u32 = 512;
 
 fn string_to_systemtime(text: String, nsec: u32) -> SystemTime {
     SystemTime::from(DateTime::<Utc>::from_utc(
