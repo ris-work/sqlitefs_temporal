@@ -138,8 +138,8 @@ impl SqliteFs {
         let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
         let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
         let time: String = "".to_string();
-        let read_only: bool = true;
-        let rewind: bool = true;
+        let read_only: bool = false;
+        let rewind: bool = false;
         Ok(SqliteFs {
             db,
             lookup_count,
