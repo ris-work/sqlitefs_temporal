@@ -128,23 +128,22 @@ fn main() {
                         }
                     };
                 } else {
-                    if(db_no_time){
-                    fs = match SqliteFs::new_no_time_recording(path) {
-                        Ok(n) => n,
-                        Err(err) => {
-                            println!("{:?}", err);
-                            return;
-                        }
-                    };
-                    }
-                    else {
-                    fs = match SqliteFs::new(path) {
-                        Ok(n) => n,
-                        Err(err) => {
-                            println!("{:?}", err);
-                            return;
-                        }
-                    };
+                    if (db_no_time) {
+                        fs = match SqliteFs::new_no_time_recording(path) {
+                            Ok(n) => n,
+                            Err(err) => {
+                                println!("{:?}", err);
+                                return;
+                            }
+                        };
+                    } else {
+                        fs = match SqliteFs::new(path) {
+                            Ok(n) => n,
+                            Err(err) => {
+                                println!("{:?}", err);
+                                return;
+                            }
+                        };
                     }
                 }
             }

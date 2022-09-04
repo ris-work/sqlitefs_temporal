@@ -347,26 +347,34 @@ pub struct Sqlite {
 impl Sqlite {
     pub fn new(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
-        let read_only=false;
-        let time_recording=true;
+        let read_only = false;
+        let time_recording = true;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        Ok(Sqlite { conn, read_only, time_recording })
+        Ok(Sqlite {
+            conn,
+            read_only,
+            time_recording,
+        })
     }
     pub fn new_no_time_recording(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
-        let read_only=false;
-        let time_recording=false;
+        let read_only = false;
+        let time_recording = false;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        Ok(Sqlite { conn, read_only, time_recording })
+        Ok(Sqlite {
+            conn,
+            read_only,
+            time_recording,
+        })
     }
     pub fn new_at_time(path: &Path, time: String) -> Result<Self> {
         let conn = Connection::open(path)?;
-        let read_only=true;
-        let time_recording=true;
+        let read_only = true;
+        let time_recording = true;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("CREATE TEMP TABLE tdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < (?1);", params![time])?;
@@ -379,23 +387,35 @@ impl Sqlite {
         conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, tdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM tdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN tdata_audit_entries ON tdata_audit_entries.timestamp_utc=max_ts AND tdata_audit_entries.file_id=latest.file_id AND tdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE';", [])?;
         conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (SELECT max_ts, latest.name, latest.file_id, txattr_audit_entries.name, txattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM txattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN txattr_audit_entries ON txattr_audit_entries.timestamp_utc=max_ts AND txattr_audit_entries.file_id=latest.file_id AND txattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE';", [])?;
         conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT max_ts, tmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM tmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN tmetadata_audit_entries ON tmetadata_audit_entries.timestamp_utc=max_ts AND tmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';", [])?;
-        Ok(Sqlite { conn, read_only, time_recording })
+        Ok(Sqlite {
+            conn,
+            read_only,
+            time_recording,
+        })
     }
     pub fn new_read_only(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
-        let read_only=true;
-        let time_recording=false;
+        let read_only = true;
+        let time_recording = false;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
-        Ok(Sqlite { conn, read_only, time_recording })
+        Ok(Sqlite {
+            conn,
+            read_only,
+            time_recording,
+        })
     }
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
-        let read_only=false;
-        let time_recording=true;
+        let read_only = false;
+        let time_recording = true;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
-        Ok(Sqlite { conn, read_only, time_recording })
+        Ok(Sqlite {
+            conn,
+            read_only,
+            time_recording,
+        })
     }
 }
 
@@ -760,9 +780,9 @@ impl DbModule for Sqlite {
             add_dentry(dentry, &tx)?;
         }
         let now = Utc::now();
-        if(self.time_recording){
-        update_mtime(parent, now, &tx)?;
-        update_ctime(parent, now, &tx)?;
+        if (self.time_recording) {
+            update_mtime(parent, now, &tx)?;
+            update_ctime(parent, now, &tx)?;
         }
         tx.commit()?;
         Ok(child)
@@ -911,10 +931,10 @@ impl DbModule for Sqlite {
             filename: name.to_string(),
         };
         add_dentry(entry, &tx)?;
-        if(self.time_recording){
-        update_mtime(inode, now, &tx)?;
-        update_mtime(parent, now, &tx)?;
-        update_ctime(parent, now, &tx)?;
+        if (self.time_recording) {
+            update_mtime(inode, now, &tx)?;
+            update_mtime(parent, now, &tx)?;
+            update_ctime(parent, now, &tx)?;
         }
         tx.commit()?;
         Ok(attr)
@@ -931,10 +951,10 @@ impl DbModule for Sqlite {
         }
         delete_dentry_local(parent, name, &tx)?;
         delete_sub_dentry(child, &tx)?;
-        if(self.time_recording){
-        update_ctime(child, now, &tx)?;
-        update_mtime(parent, now, &tx)?;
-        update_ctime(parent, now, &tx)?;
+        if (self.time_recording) {
+            update_ctime(child, now, &tx)?;
+            update_mtime(parent, now, &tx)?;
+            update_ctime(parent, now, &tx)?;
         }
         tx.commit()?;
         Ok(child)
@@ -1004,14 +1024,14 @@ impl DbModule for Sqlite {
             let sql = "UPDATE dentry set child_id=$1 WHERE parent_id=$2 and name='..'";
             tx.execute(sql, params![new_parent, dentry.child_ino])?;
         }
-        if(self.time_recording){
-        update_ctime(dentry.child_ino, now, &tx)?;
-        update_mtime(parent, now, &tx)?;
-        update_ctime(parent, now, &tx)?;
-        if parent != new_parent {
-            update_mtime(new_parent, now, &tx)?;
-            update_ctime(new_parent, now, &tx)?;
-        }
+        if (self.time_recording) {
+            update_ctime(dentry.child_ino, now, &tx)?;
+            update_mtime(parent, now, &tx)?;
+            update_ctime(parent, now, &tx)?;
+            if parent != new_parent {
+                update_mtime(new_parent, now, &tx)?;
+                update_ctime(new_parent, now, &tx)?;
+            }
         }
         tx.commit()?;
         Ok(res)
@@ -1055,8 +1075,8 @@ impl DbModule for Sqlite {
         let stmt = tx.prepare(sql)?;
         let params = params![parent, name];
         let result = parse_attr(stmt, params);
-        if(self.time_recording){
-        update_atime(parent, Utc::now(), &tx)?;
+        if (self.time_recording) {
+            update_atime(parent, Utc::now(), &tx)?;
         }
         tx.commit()?;
         result
@@ -1124,8 +1144,8 @@ impl DbModule for Sqlite {
                 }
             };
         }
-        if((!(self.read_only)) && self.time_recording){
-        update_atime(inode, Utc::now(), &tx)?;
+        if ((!(self.read_only)) && self.time_recording) {
+            update_atime(inode, Utc::now(), &tx)?;
         }
         tx.commit()?;
         Ok(row)
@@ -1155,8 +1175,8 @@ impl DbModule for Sqlite {
                 }
             };
         }
-        if(self.time_recording){
-        update_atime(inode, Utc::now(), &tx)?;
+        if (self.time_recording) {
+            update_atime(inode, Utc::now(), &tx)?;
         }
         tx.commit()?;
         Ok(row)
@@ -1184,9 +1204,9 @@ impl DbModule for Sqlite {
             }
         }
         let time = Utc::now();
-        if(self.time_recording){
-        update_mtime(inode, time, &tx)?;
-        update_ctime(inode, time, &tx)?;
+        if (self.time_recording) {
+            update_mtime(inode, time, &tx)?;
+            update_ctime(inode, time, &tx)?;
         }
         tx.commit()?;
         Ok(())
@@ -1224,8 +1244,8 @@ impl DbModule for Sqlite {
             )?;
         }
         let time = Utc::now();
-        if(self.time_recording){
-        update_ctime(inode, time, &tx)?;
+        if (self.time_recording) {
+            update_ctime(inode, time, &tx)?;
         }
         tx.commit()?;
         Ok(())
@@ -1302,7 +1322,7 @@ impl DbModule for Sqlite {
         }
         let time = Utc::now();
         if (self.time_recording) {
-        update_ctime(inode, time, &tx)?;
+            update_ctime(inode, time, &tx)?;
         }
         tx.commit()?;
         Ok(())
