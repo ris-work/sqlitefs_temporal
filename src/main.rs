@@ -35,6 +35,12 @@ fn main() {
         .help("Sqlite database time to rewind to. If specified, implies read-only.")
         .takes_value(true);
 
+    let db_no_time_recording_arg = Arg::with_name("no_time_recording")
+        .short('n')
+        .long("no_time")
+        .help("Don't record atime, ctime, etc. It will make it significantly faster for on-disk databases.")
+        .takes_value(true);
+
     let db_read_only_arg = Arg::with_name("read_only")
         .short('r')
         .long("read-only")
@@ -52,6 +58,7 @@ fn main() {
         .arg(mount_point_arg)
         .arg(db_path_arg)
         .arg(db_time_arg)
+        .arg(db_no_time_recording_arg)
         .arg(db_read_only_arg)
         .arg(license_arg)
         .get_matches();
@@ -84,6 +91,7 @@ fn main() {
     let db_path = matches.value_of("db_path");
     let db_time = matches.value_of("at_time");
     let db_read_only: bool = matches.is_present("read_only");
+    let db_no_time: bool = matches.is_present("no_time_recoding");
     let display_license: bool = matches.is_present("display_license");
     if (display_license) {
         println!("{}", LICENSE)
@@ -120,6 +128,16 @@ fn main() {
                         }
                     };
                 } else {
+                    if(db_no_time){
+                    fs = match SqliteFs::new_no_time_recording(path) {
+                        Ok(n) => n,
+                        Err(err) => {
+                            println!("{:?}", err);
+                            return;
+                        }
+                    };
+                    }
+                    else {
                     fs = match SqliteFs::new(path) {
                         Ok(n) => n,
                         Err(err) => {
@@ -127,6 +145,7 @@ fn main() {
                             return;
                         }
                     };
+                    }
                 }
             }
         },

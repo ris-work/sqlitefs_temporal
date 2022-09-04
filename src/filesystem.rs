@@ -127,6 +127,29 @@ impl SqliteFs {
             time,
         })
     }
+     pub fn new_no_time_recording(path: &str) -> Result<SqliteFs, Error> {
+        debug! {"Requested no time recording."};
+        let mut db = match Sqlite::new_no_time_recording(Path::new(path)) {
+            Ok(n) => n,
+            Err(err) => return Err(err),
+        };
+        db.init()?;
+        let lookup_count = Arc::new(Mutex::new(HashMap::<u32, u32>::new()));
+        let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
+        let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
+        let time: String = "".to_string();
+        let read_only: bool = true;
+        let rewind: bool = true;
+        Ok(SqliteFs {
+            db,
+            lookup_count,
+            open_file_handler,
+            open_dir_handler,
+            read_only,
+            rewind,
+            time,
+        })
+    }
     pub fn new_read_only(path: &str) -> Result<SqliteFs, Error> {
         let mut db = match Sqlite::new_read_only(Path::new(path)) {
             Ok(n) => n,
