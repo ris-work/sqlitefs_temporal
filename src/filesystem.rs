@@ -127,7 +127,7 @@ impl SqliteFs {
             time,
         })
     }
-     pub fn new_no_time_recording(path: &str) -> Result<SqliteFs, Error> {
+    pub fn new_no_time_recording(path: &str) -> Result<SqliteFs, Error> {
         debug! {"Requested no time recording."};
         let mut db = match Sqlite::new_no_time_recording(Path::new(path)) {
             Ok(n) => n,
