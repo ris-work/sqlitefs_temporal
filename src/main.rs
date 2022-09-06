@@ -46,7 +46,7 @@ fn main() {
         .help("Mount as read-only.");
 
     let db_rollback_mode_arg = Arg::with_name("rollback_mode")
-        .short('o')
+        .short('b')
         .long("rollback-mode")
         .help("Rollback instead of WAL mode.");
 
