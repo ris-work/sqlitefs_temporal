@@ -3,37 +3,21 @@ use fuse::{
     FileType, Filesystem, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty,
     ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
 };
-#[cfg(not(target_os="freebsd"))]
+#[cfg(target_os = "freebsd")]
+use libc::{
+    c_int, EEXIST, EINVAL, EISDIR, ENAMETOOLONG, ENOATTR as ENODATA, ENOENT, ENOTDIR, ENOTEMPTY,
+    EPERM, ERANGE, O_APPEND, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, S_ISGID, S_ISVTX,
+};
+#[cfg(not(target_os = "freebsd"))]
 use libc::{
     c_int, EEXIST, EINVAL, EISDIR, ENAMETOOLONG, ENODATA, ENOENT, ENOTDIR, ENOTEMPTY, EPERM,
     ERANGE, O_APPEND, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, S_ISGID, S_ISVTX, XATTR_CREATE,
     XATTR_REPLACE,
 };
-#[cfg(target_os="freebsd")]
-use libc::{
-    c_int,
-    ENOENT,
-    ENOTEMPTY,
-    EISDIR,
-    ENOTDIR,
-    EPERM,
-    EEXIST,
-    EINVAL,
-    ENAMETOOLONG,
-    ENOATTR as ENODATA,
-    ERANGE,
-    O_RDONLY,
-    O_RDWR,
-    O_CREAT,
-    O_WRONLY,
-    O_APPEND,
-    S_ISGID,
-    S_ISVTX,
-};
-#[cfg(target_os="freebsd")]
-const XATTR_REPLACE: u32 =1;
-#[cfg(target_os="freebsd")]
-const XATTR_CREATE: u32 =0;
+#[cfg(target_os = "freebsd")]
+const XATTR_REPLACE: u32 = 1;
+#[cfg(target_os = "freebsd")]
+const XATTR_CREATE: u32 = 0;
 
 #[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
 use libc::O_NOATIME;
@@ -1155,7 +1139,9 @@ impl Filesystem for SqliteFs {
         if (!self.read_only) {
             let ino = ino as u32;
             let name = name.to_str().unwrap();
-            if (cfg!(target_os="linux") || cfg!(target_os="macos")) && (flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0) {
+            if (cfg!(target_os = "linux") || cfg!(target_os = "macos"))
+                && (flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0)
+            {
                 match self.db.get_xattr(ino, name) {
                     Ok(_) => {
                         if flags & XATTR_CREATE as u32 > 0 {
@@ -1176,8 +1162,7 @@ impl Filesystem for SqliteFs {
                         }
                     },
                 };
-            }
-            else if flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0 {
+            } else if flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0 {
             }
             match self.db.set_xattr(ino, name, value) {
                 Ok(n) => n,
