@@ -3,9 +3,9 @@ use crate::db_module::{DBFileAttr, DEntry, DbModule};
 use crate::sqerror::{Error, ErrorKind, Result};
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
 use fuse::FileType;
+use rusqlite;
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Statement};
-use rusqlite;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -346,28 +346,32 @@ pub struct Sqlite {
 }
 
 impl Sqlite {
-    pub fn new(path: &Path) -> Result<Self> {
+    pub fn new(path: &Path, wal_mode: bool) -> Result<Self> {
         let conn = Connection::open(path)?;
         let read_only = false;
         let time_recording = true;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row|  {Ok(true)})?;
+        if (wal_mode) {
+            conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
+        }
         Ok(Sqlite {
             conn,
             read_only,
             time_recording,
         })
     }
-    pub fn new_no_time_recording(path: &Path) -> Result<Self> {
+    pub fn new_no_time_recording(path: &Path, wal_mode: bool) -> Result<Self> {
         let conn = Connection::open(path)?;
         let read_only = false;
         let time_recording = false;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row|  {Ok(true)})?;
+        if (wal_mode) {
+            conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
+        }
         Ok(Sqlite {
             conn,
             read_only,
