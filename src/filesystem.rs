@@ -3,16 +3,39 @@ use fuse::{
     FileType, Filesystem, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty,
     ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
 };
+#[cfg(not(target_os="freebsd"))]
 use libc::{
     c_int, EEXIST, EINVAL, EISDIR, ENAMETOOLONG, ENODATA, ENOENT, ENOTDIR, ENOTEMPTY, EPERM,
     ERANGE, O_APPEND, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, S_ISGID, S_ISVTX, XATTR_CREATE,
     XATTR_REPLACE,
 };
+#[cfg(target_os="freebsd")]
+use libc::{
+    c_int,
+    ENOENT,
+    ENOTEMPTY,
+    EISDIR,
+    ENOTDIR,
+    EPERM,
+    EEXIST,
+    EINVAL,
+    ENAMETOOLONG,
+    ENOATTR as ENODATA,
+    ERANGE,
+    O_RDONLY,
+    O_APPEND,
+    S_ISGID,
+    S_ISVTX,
+};
+#[cfg(target_os="freebsd")]
+const XATTR_REPLACE: u32 =0;
+#[cfg(target_os="freebsd")]
+const XATTR_CREATE: u32 =0;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
 use libc::O_NOATIME;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "freebsd"))]
 const O_NOATIME: u32 = 0;
 
 use crate::db_module::sqlite::Sqlite;
