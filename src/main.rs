@@ -128,7 +128,7 @@ fn main() {
                     };
                 } else {
                     if (db_no_time) {
-                        fs = match SqliteFs::new_no_time_recording(path) {
+                        fs = match SqliteFs::new_no_time_recording(path, true) {
                             Ok(n) => n,
                             Err(err) => {
                                 println!("{:?}", err);
@@ -136,7 +136,7 @@ fn main() {
                             }
                         };
                     } else {
-                        fs = match SqliteFs::new(path) {
+                        fs = match SqliteFs::new(path, true) {
                             Ok(n) => n,
                             Err(err) => {
                                 println!("{:?}", err);
