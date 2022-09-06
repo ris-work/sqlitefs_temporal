@@ -3,9 +3,9 @@ use crate::db_module::{DBFileAttr, DEntry, DbModule};
 use crate::sqerror::{Error, ErrorKind, Result};
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
 use fuse::FileType;
+use rusqlite;
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, Statement};
-use rusqlite;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -353,7 +353,7 @@ impl Sqlite {
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row|  {Ok(true)})?;
+        conn.query_row("PRAGMA journal_mode=WAL", [], |row| Ok(true))?;
         Ok(Sqlite {
             conn,
             read_only,
@@ -367,7 +367,7 @@ impl Sqlite {
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row|  {Ok(true)})?;
+        conn.query_row("PRAGMA journal_mode=WAL", [], |row| Ok(true))?;
         Ok(Sqlite {
             conn,
             read_only,
