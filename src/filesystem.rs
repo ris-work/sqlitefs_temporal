@@ -31,7 +31,7 @@ use libc::{
     S_ISVTX,
 };
 #[cfg(target_os="freebsd")]
-const XATTR_REPLACE: u32 =0;
+const XATTR_REPLACE: u32 =1;
 #[cfg(target_os="freebsd")]
 const XATTR_CREATE: u32 =0;
 
@@ -1155,7 +1155,7 @@ impl Filesystem for SqliteFs {
         if (!self.read_only) {
             let ino = ino as u32;
             let name = name.to_str().unwrap();
-            if flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0 {
+            if (cfg!(target_os="linux") || cfg!(target_os="macos")) && (flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0) {
                 match self.db.get_xattr(ino, name) {
                     Ok(_) => {
                         if flags & XATTR_CREATE as u32 > 0 {
@@ -1176,6 +1176,8 @@ impl Filesystem for SqliteFs {
                         }
                     },
                 };
+            }
+            else if flags & XATTR_CREATE as u32 > 0 || flags & XATTR_REPLACE as u32 > 0 {
             }
             match self.db.set_xattr(ino, name, value) {
                 Ok(n) => n,
