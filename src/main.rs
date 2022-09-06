@@ -45,6 +45,11 @@ fn main() {
         .long("read-only")
         .help("Mount as read-only.");
 
+    let db_rollback_mode_arg = Arg::with_name("rollback_mode")
+        .short('o')
+        .long("rollback-mode")
+        .help("Rollback instead of WAL mode.");
+
     let license_arg = Arg::with_name("display_license")
         .short('L')
         .long("license")
@@ -59,6 +64,7 @@ fn main() {
         .arg(db_time_arg)
         .arg(db_no_time_recording_arg)
         .arg(db_read_only_arg)
+        .arg(db_rollback_mode_arg)
         .arg(license_arg)
         .get_matches();
 
@@ -92,6 +98,7 @@ fn main() {
     let db_read_only: bool = matches.is_present("read_only");
     let db_no_time: bool = matches.is_present("no_time_recording");
     let display_license: bool = matches.is_present("display_license");
+    let db_rollback_mode: bool = matches.is_present("rollback_mode");
     if (display_license) {
         println!("{}", LICENSE)
     }
@@ -128,7 +135,7 @@ fn main() {
                     };
                 } else {
                     if (db_no_time) {
-                        fs = match SqliteFs::new_no_time_recording(path, true) {
+                        fs = match SqliteFs::new_no_time_recording(path, !db_rollback_mode) {
                             Ok(n) => n,
                             Err(err) => {
                                 println!("{:?}", err);
@@ -136,7 +143,7 @@ fn main() {
                             }
                         };
                     } else {
-                        fs = match SqliteFs::new(path, true) {
+                        fs = match SqliteFs::new(path, !db_rollback_mode) {
                             Ok(n) => n,
                             Err(err) => {
                                 println!("{:?}", err);
