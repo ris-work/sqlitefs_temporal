@@ -177,11 +177,13 @@ impl<'a> Request<'a> {
                 };
                 let atime = match arg.valid & FATTR_ATIME {
                     0 => None,
-                    _ => Some(Timespec::new(arg.atime.try_into().unwrap(), arg.atimensec.try_into().unwrap())),
+                    #[cfg(not(target_os="netbsd"))] _ => Some(Timespec::new(arg.atime, arg.atimensec)),
+                    #[cfg(target_os="netbsd")] _ => Some(Timespec::new(arg.atime.try_into().unwrap(), arg.atimensec.try_into().unwrap())),
                 };
                 let mtime = match arg.valid & FATTR_MTIME {
                     0 => None,
-                    _ => Some(Timespec::new(arg.mtime.try_into().unwrap(), arg.mtimensec.try_into().unwrap())),
+                    #[cfg(not(target_os="netbsd"))] _ => Some(Timespec::new(arg.mtime, arg.mtimensec)),
+                    #[cfg(target_os="netbsd")] _ => Some(Timespec::new(arg.mtime.try_into().unwrap(), arg.mtimensec.try_into().unwrap())),
                 };
                 let fh = match arg.valid & FATTR_FH {
                     0 => None,
@@ -269,14 +271,16 @@ impl<'a> Request<'a> {
             FUSE_READ => {
                 let arg: &fuse_read_in = data.fetch();
                 debug!("READ({}) ino {:#018x}, fh {}, offset {}, size {}", self.header.unique, self.header.nodeid, arg.fh, arg.offset, arg.size);
-                se.filesystem.read(self, self.header.nodeid, arg.fh, arg.offset.try_into().unwrap(), arg.size, self.reply());
+                #[cfg(not(target_os="netbsd"))] se.filesystem.read(self, self.header.nodeid, arg.fh, arg.offset, arg.size, self.reply());
+                #[cfg(target_os="netbsd")] se.filesystem.read(self, self.header.nodeid, arg.fh, arg.offset.try_into().unwrap(), arg.size, self.reply());
             }
             FUSE_WRITE => {
                 let arg: &fuse_write_in = data.fetch();
                 let data = data.fetch_data();
                 assert!(data.len() == arg.size as usize);
                 debug!("WRITE({}) ino {:#018x}, fh {}, offset {}, size {}, flags {:#x}", self.header.unique, self.header.nodeid, arg.fh, arg.offset, arg.size, arg.write_flags);
-                se.filesystem.write(self, self.header.nodeid, arg.fh, arg.offset.try_into().unwrap(), data, arg.write_flags, self.reply());
+                #[cfg(not(target_os="netbsd"))] se.filesystem.write(self, self.header.nodeid, arg.fh, arg.offset, data, arg.write_flags, self.reply());
+                #[cfg(target_os="netbsd")] se.filesystem.write(self, self.header.nodeid, arg.fh, arg.offset.try_into().unwrap(), data, arg.write_flags, self.reply());
             }
             FUSE_FLUSH => {
                 let arg: &fuse_flush_in = data.fetch();
@@ -309,7 +313,8 @@ impl<'a> Request<'a> {
             FUSE_READDIR => {
                 let arg: &fuse_read_in = data.fetch();
                 debug!("READDIR({}) ino {:#018x}, fh {}, offset {}, size {}", self.header.unique, self.header.nodeid, arg.fh, arg.offset, arg.size);
-                se.filesystem.readdir(self, self.header.nodeid, arg.fh, arg.offset.try_into().unwrap(), ReplyDirectory::new(self.header.unique, self.ch, arg.size as usize));
+                #[cfg(not(target_os="netbsd"))] se.filesystem.readdir(self, self.header.nodeid, arg.fh, arg.offset, ReplyDirectory::new(self.header.unique, self.ch, arg.size as usize));
+                #[cfg(target_os="netbsd")] se.filesystem.readdir(self, self.header.nodeid, arg.fh, arg.offset.try_into().unwrap(), ReplyDirectory::new(self.header.unique, self.ch, arg.size as usize));
             }
             FUSE_RELEASEDIR => {
                 let arg: &fuse_release_in = data.fetch();
