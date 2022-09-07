@@ -3,26 +3,26 @@ use fuse::{
     FileType, Filesystem, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty,
     ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
 };
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "freebsd", target_os="netbsd"))]
 use libc::{
     c_int, EEXIST, EINVAL, EISDIR, ENAMETOOLONG, ENOATTR as ENODATA, ENOENT, ENOTDIR, ENOTEMPTY,
     EPERM, ERANGE, O_APPEND, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, S_ISGID, S_ISVTX,
 };
-#[cfg(not(target_os = "freebsd"))]
+#[cfg(not(any(target_os = "freebsd", target_os="netbsd")))]
 use libc::{
     c_int, EEXIST, EINVAL, EISDIR, ENAMETOOLONG, ENODATA, ENOENT, ENOTDIR, ENOTEMPTY, EPERM,
     ERANGE, O_APPEND, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, S_ISGID, S_ISVTX, XATTR_CREATE,
     XATTR_REPLACE,
 };
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "freebsd", target_os="netbsd"))]
 const XATTR_REPLACE: u32 = 1;
-#[cfg(target_os = "freebsd")]
+#[cfg(any(target_os = "freebsd", target_os="netbsd"))]
 const XATTR_CREATE: u32 = 0;
 
-#[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
+#[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os="netbsd")))]
 use libc::O_NOATIME;
 
-#[cfg(any(target_os = "macos", target_os = "freebsd"))]
+#[cfg(any(target_os = "macos", target_os = "freebsd", target_os="netbsd"))]
 const O_NOATIME: u32 = 0;
 
 use crate::db_module::sqlite::Sqlite;
