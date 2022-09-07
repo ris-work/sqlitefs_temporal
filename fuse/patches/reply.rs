@@ -8,6 +8,7 @@
 
 use std::{mem, ptr, slice};
 use std::convert::AsRef;
+use std::convert::TryInto;
 use std::ffi::OsStr;
 use std::fmt;
 use std::marker::PhantomData;
@@ -92,9 +93,30 @@ fn fuse_attr_from_attr(attr: &FileAttr) -> fuse_attr {
         flags: attr.flags,
     }
 }
+#[cfg(target_os = "netbsd")]
+fn fuse_attr_from_attr(attr: &FileAttr) -> fuse_attr {
+    fuse_attr {
+        ino: attr.ino,
+        size: attr.size,
+        blocks: attr.blocks,
+        atime: attr.atime.sec,
+        mtime: attr.mtime.sec,
+        ctime: attr.ctime.sec,
+        atimensec: attr.atime.nsec,
+        mtimensec: attr.mtime.nsec,
+        ctimensec: attr.ctime.nsec,
+        mode: mode_from_kind_and_perm(attr.kind, attr.perm),
+        nlink: attr.nlink,
+        uid: attr.uid,
+        gid: attr.gid,
+        rdev: attr.rdev,
+        blksize: 0,
+        padding: 0,
+    }
+}
 
 /// Returns a fuse_attr from FileAttr
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os="netbsd")))]
 fn fuse_attr_from_attr(attr: &FileAttr) -> fuse_attr {
     fuse_attr {
         ino: attr.ino,
@@ -242,6 +264,7 @@ impl Reply for ReplyEntry {
     }
 }
 
+#[cfg(not(target_os="netbsd"))]
 impl ReplyEntry {
     /// Reply to a request with the given entry
     pub fn entry(self, ttl: &Timespec, attr: &FileAttr, generation: u64) {
@@ -252,6 +275,26 @@ impl ReplyEntry {
             attr_valid: ttl.sec,
             entry_valid_nsec: ttl.nsec,
             attr_valid_nsec: ttl.nsec,
+            attr: fuse_attr_from_attr(attr),
+        });
+    }
+
+    /// Reply to a request with the given error code
+    pub fn error(self, err: c_int) {
+        self.reply.error(err);
+    }
+}
+#[cfg(target_os="netbsd")]
+impl ReplyEntry {
+    /// Reply to a request with the given entry
+    pub fn entry(self, ttl: &Timespec, attr: &FileAttr, generation: u64) {
+        self.reply.ok(&fuse_entry_out {
+            nodeid: attr.ino,
+            generation: generation,
+            entry_valid: ttl.sec,
+            attr_valid: ttl.sec,
+            entry_valid_nsec: ttl.nsec.try_into().unwrap(),
+            attr_valid_nsec: ttl.nsec.try_into().unwrap(),
             attr: fuse_attr_from_attr(attr),
         });
     }
@@ -276,12 +319,30 @@ impl Reply for ReplyAttr {
     }
 }
 
+#[cfg(not(target_os="netbsd"))]
 impl ReplyAttr {
     /// Reply to a request with the given attribute
     pub fn attr(self, ttl: &Timespec, attr: &FileAttr) {
         self.reply.ok(&fuse_attr_out {
             attr_valid: ttl.sec,
             attr_valid_nsec: ttl.nsec,
+            dummy: 0,
+            attr: fuse_attr_from_attr(attr),
+        });
+    }
+
+    /// Reply to a request with the given error code
+    pub fn error(self, err: c_int) {
+        self.reply.error(err);
+    }
+}
+#[cfg(target_os="netbsd")]
+impl ReplyAttr {
+    /// Reply to a request with the given attribute
+    pub fn attr(self, ttl: &Timespec, attr: &FileAttr) {
+        self.reply.ok(&fuse_attr_out {
+            attr_valid: ttl.sec.try_into().unwrap(),
+            attr_valid_nsec: ttl.nsec.try_into().unwrap(),
             dummy: 0,
             attr: fuse_attr_from_attr(attr),
         });
@@ -439,6 +500,7 @@ impl Reply for ReplyCreate {
     }
 }
 
+#[cfg(not(target_os="netbsd"))]
 impl ReplyCreate {
     /// Reply to a request with the given entry
     pub fn created(self, ttl: &Timespec, attr: &FileAttr, generation: u64, fh: u64, flags: u32) {
@@ -449,6 +511,30 @@ impl ReplyCreate {
             attr_valid: ttl.sec,
             entry_valid_nsec: ttl.nsec,
             attr_valid_nsec: ttl.nsec,
+            attr: fuse_attr_from_attr(attr),
+        }, fuse_open_out {
+            fh: fh,
+            open_flags: flags,
+            padding: 0,
+        }));
+    }
+
+    /// Reply to a request with the given error code
+    pub fn error(self, err: c_int) {
+        self.reply.error(err);
+    }
+}
+#[cfg(target_os="netbsd")]
+impl ReplyCreate {
+    /// Reply to a request with the given entry
+    pub fn created(self, ttl: &Timespec, attr: &FileAttr, generation: u64, fh: u64, flags: u32) {
+        self.reply.ok(&(fuse_entry_out {
+            nodeid: attr.ino,
+            generation: generation,
+            entry_valid: ttl.sec,
+            attr_valid: ttl.sec,
+            entry_valid_nsec: ttl.nsec.try_into().unwrap(),
+            attr_valid_nsec: ttl.nsec.try_into().unwrap(),
             attr: fuse_attr_from_attr(attr),
         }, fuse_open_out {
             fh: fh,
