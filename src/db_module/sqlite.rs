@@ -657,7 +657,7 @@ impl DbModule for Sqlite {
         {
             let row_count: u32 =
                 self.conn
-                    .query_row(table_search_sql, params!["xattr"], |row| row.get(0))?;
+                    .query_row(table_search_sql, params!["xattr_audit"], |row| row.get(0))?;
             if row_count == 0 {
                 let sql = "CREATE TEMP TABLE xattr(\
                     file_id int,\
