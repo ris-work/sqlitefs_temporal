@@ -437,7 +437,9 @@ impl DbModule for Sqlite {
         {
             let row_count: u32 =
                 self.conn
-                    .query_row(table_search_sql, params!["metadata_audit"], |row| row.get(0))?;
+                    .query_row(table_search_sql, params!["metadata_audit"], |row| {
+                        row.get(0)
+                    })?;
             if row_count == 0 {
                 let sql = "CREATE TEMP TABLE metadata(\
                     id integer primary key AUTOINCREMENT,\
@@ -484,12 +486,11 @@ impl DbModule for Sqlite {
                     )";
                 let res_audit_table = self.conn.execute(sql_audit_table, params![])?;
                 debug!("metadata table: {}", res_audit_table);
+            } else {
+                self.conn.execute("CREATE TEMP VIEW vmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < '9999-99-99';", [])?;
+                self.conn.execute("CREATE TEMP TABLE metadata AS SELECT * FROM (SELECT max_ts, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';", [])?;
             }
-            else {
-        self.conn.execute("CREATE TEMP VIEW vmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < '9999-99-99';", [])?;
-        self.conn.execute("CREATE TEMP TABLE metadata AS SELECT * FROM (SELECT max_ts, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';", [])?;
-            }
-                let sql_audit_trigger_delete = "\
+            let sql_audit_trigger_delete = "\
                 CREATE TEMP TRIGGER audit_delete_metadata AFTER DELETE on temp.metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
@@ -500,10 +501,10 @@ impl DbModule for Sqlite {
                     OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
                 END \
                 ";
-                let res_audit_trigger_delete =
-                    self.conn.execute(sql_audit_trigger_delete, params![])?;
-                debug!("metadata table: {}", res_audit_trigger_delete);
-                let sql_audit_trigger_update = "\
+            let res_audit_trigger_delete =
+                self.conn.execute(sql_audit_trigger_delete, params![])?;
+            debug!("metadata table: {}", res_audit_trigger_delete);
+            let sql_audit_trigger_update = "\
                 CREATE TEMP TRIGGER audit_update_metadata AFTER UPDATE on temp.metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
@@ -514,10 +515,10 @@ impl DbModule for Sqlite {
                     NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
                 END \
                 ";
-                let res_audit_trigger_update =
-                    self.conn.execute(sql_audit_trigger_update, params![])?;
-                debug!("metadata table: {}", res_audit_trigger_update);
-                let sql_audit_trigger_insert = "\
+            let res_audit_trigger_update =
+                self.conn.execute(sql_audit_trigger_update, params![])?;
+            debug!("metadata table: {}", res_audit_trigger_update);
+            let sql_audit_trigger_insert = "\
                 CREATE TEMP TRIGGER audit_insert_metadata AFTER INSERT on temp.metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
@@ -528,9 +529,9 @@ impl DbModule for Sqlite {
                     NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
                 END \
                 ";
-                let res_audit_trigger_insert =
-                    self.conn.execute(sql_audit_trigger_insert, params![])?;
-                debug!("metadata table: {}", res_audit_trigger_insert);
+            let res_audit_trigger_insert =
+                self.conn.execute(sql_audit_trigger_insert, params![])?;
+            debug!("metadata table: {}", res_audit_trigger_insert);
         }
         {
             let row_count: u32 =
@@ -544,10 +545,10 @@ impl DbModule for Sqlite {
                     name text, \
                     primary key (parent_id, name) \
                     )";
-//                    foreign key (parent_id) references metadata(id) on delete cascade,\
-//                    foreign key (child_id) references metadata(id) on delete cascade,\
-//                    "primary key (parent_id, name) \
-//                    )";
+                //                    foreign key (parent_id) references metadata(id) on delete cascade,\
+                //                    foreign key (child_id) references metadata(id) on delete cascade,\
+                //                    "primary key (parent_id, name) \
+                //                    )";
                 self.conn.execute(sql, params![])?;
                 let sql_audit_table = "CREATE TABLE dentry_audit(\
                     seq integer PRIMARY KEY AUTOINCREMENT,\
@@ -560,11 +561,10 @@ impl DbModule for Sqlite {
                     )";
                 self.conn.execute(sql_audit_table, params![])?;
             } else {
-
-        self.conn.execute("CREATE TEMP VIEW vdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < 9999-99-99;", params![])?;
-        self.conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, vdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM vdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN vdentry_audit_entries ON vdentry_audit_entries.timestamp_utc=max_ts AND vdentry_audit_entries.child_id=latest.child_id AND vdentry_audit_entries.name = latest.name AND vdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';", [])?;
+                self.conn.execute("CREATE TEMP VIEW vdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < 9999-99-99;", params![])?;
+                self.conn.execute("CREATE TEMP TABLE dentry AS SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, vdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM vdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN vdentry_audit_entries ON vdentry_audit_entries.timestamp_utc=max_ts AND vdentry_audit_entries.child_id=latest.child_id AND vdentry_audit_entries.name = latest.name AND vdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';", [])?;
             }
-                let sql_audit_trigger_delete = "\
+            let sql_audit_trigger_delete = "\
                 CREATE TEMP TRIGGER audit_delete_dentry AFTER DELETE on dentry \
                 BEGIN \
                     INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
@@ -572,36 +572,36 @@ impl DbModule for Sqlite {
                     OLD.name); \
                 END \
                 ";
-                let res_audit_trigger_delete =
-                    self.conn.execute(sql_audit_trigger_delete, params![])?;
-                debug!("dentry table: {}", res_audit_trigger_delete);
-                let sql_audit_trigger_update = "\
+            let res_audit_trigger_delete =
+                self.conn.execute(sql_audit_trigger_delete, params![])?;
+            debug!("dentry table: {}", res_audit_trigger_delete);
+            let sql_audit_trigger_update = "\
                 CREATE TEMP TRIGGER audit_update_dentry AFTER UPDATE on dentry \
                 BEGIN \
                     INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.parent_id, NEW.child_id, NEW.file_type, \
                     NEW.name); \
                 END";
-                let res_audit_trigger_update =
-                    self.conn.execute(sql_audit_trigger_update, params![])?;
-                debug!("dentry table: {}", res_audit_trigger_update);
-                let sql_audit_trigger_insert = "\
+            let res_audit_trigger_update =
+                self.conn.execute(sql_audit_trigger_update, params![])?;
+            debug!("dentry table: {}", res_audit_trigger_update);
+            let sql_audit_trigger_insert = "\
                 CREATE TEMP TRIGGER audit_insert_dentry AFTER INSERT on dentry \
                 BEGIN \
                     INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.parent_id, NEW.child_id, NEW.file_type, \
                     NEW.name); \
                 END";
-                let res_audit_trigger_insert =
-                    self.conn.execute(sql_audit_trigger_insert, params![])?;
-                debug!("dentry table: {}", res_audit_trigger_insert);
+            let res_audit_trigger_insert =
+                self.conn.execute(sql_audit_trigger_insert, params![])?;
+            debug!("dentry table: {}", res_audit_trigger_insert);
         }
         {
-            let row_count: u32 = self
-                .conn
-                .query_row(table_search_sql, params!["data"], |row| row.get(0))?;
+            let row_count: u32 =
+                self.conn
+                    .query_row(table_search_sql, params!["data_audit"], |row| row.get(0))?;
             if row_count == 0 {
-                let sql = "CREATE TABLE data(\
+                let sql = "CREATE TEMP TABLE data(\
                     file_id int,\
                     block_num int,\
                     data blob,\
@@ -618,38 +618,41 @@ impl DbModule for Sqlite {
                     data blob\
                     )";
                 self.conn.execute(sql_audit_table, params![])?;
-                let sql_audit_trigger_delete = "\
-                CREATE TRIGGER audit_delete_data AFTER DELETE on data \
+            } else {
+                self.conn.execute("CREATE TEMP VIEW vdata_audit_entries AS SELECT * FROM data_audit WHERE timestamp_utc < 9999-99-99;", params![])?;
+                self.conn.execute("CREATE TEMP TABLE data AS SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, vdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM vdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN vdata_audit_entries ON vdata_audit_entries.timestamp_utc=max_ts AND vdata_audit_entries.file_id=latest.file_id AND vdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE';", [])?;
+            }
+            let sql_audit_trigger_delete = "\
+                CREATE TEMP TRIGGER audit_delete_data AFTER DELETE on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.block_num, NULL \
                     ); \
                 END \
                 ";
-                let res_audit_trigger_delete =
-                    self.conn.execute(sql_audit_trigger_delete, params![])?;
-                debug!("data table: {}", res_audit_trigger_delete);
-                let sql_audit_trigger_update = "\
-                CREATE TRIGGER audit_update_data AFTER UPDATE on data \
+            let res_audit_trigger_delete =
+                self.conn.execute(sql_audit_trigger_delete, params![])?;
+            debug!("data table: {}", res_audit_trigger_delete);
+            let sql_audit_trigger_update = "\
+                CREATE TEMP TRIGGER audit_update_data AFTER UPDATE on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
-                let res_audit_trigger_update =
-                    self.conn.execute(sql_audit_trigger_update, params![])?;
-                debug!("data table: {}", res_audit_trigger_update);
-                let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_insert_data AFTER INSERT on data \
+            let res_audit_trigger_update =
+                self.conn.execute(sql_audit_trigger_update, params![])?;
+            debug!("data table: {}", res_audit_trigger_update);
+            let sql_audit_trigger_insert = "\
+                CREATE TEMP TRIGGER audit_insert_data AFTER INSERT on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.file_id, NEW.block_num, NEW.data \
                     ); \
                 END";
-                let res_audit_trigger_insert =
-                    self.conn.execute(sql_audit_trigger_insert, params![])?;
-                debug!("data table: {}", res_audit_trigger_insert);
-            }
+            let res_audit_trigger_insert =
+                self.conn.execute(sql_audit_trigger_insert, params![])?;
+            debug!("data table: {}", res_audit_trigger_insert);
         }
         {
             let row_count: u32 =
