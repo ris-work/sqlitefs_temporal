@@ -35,6 +35,12 @@ fn main() {
         .help("Sqlite database time to rewind to. If specified, implies read-only.")
         .takes_value(true);
 
+    let db_syn_mode_arg = Arg::with_name("syn_mode")
+        .short('s')
+        .long("syn_mode")
+        .help("Sqlite database sync mode.")
+        .takes_value(true);
+
     let db_no_time_recording_arg = Arg::with_name("no_time_recording")
         .short('n')
         .long("no_time")
@@ -44,6 +50,11 @@ fn main() {
         .short('r')
         .long("read-only")
         .help("Mount as read-only.");
+
+    let db_rollback_mode_arg = Arg::with_name("rollback_mode")
+        .short('b')
+        .long("rollback-mode")
+        .help("Rollback instead of WAL mode.");
 
     let license_arg = Arg::with_name("display_license")
         .short('L')
@@ -59,6 +70,8 @@ fn main() {
         .arg(db_time_arg)
         .arg(db_no_time_recording_arg)
         .arg(db_read_only_arg)
+        .arg(db_rollback_mode_arg)
+        .arg(db_syn_mode_arg)
         .arg(license_arg)
         .get_matches();
 
@@ -89,9 +102,17 @@ fn main() {
         .expect("Mount point path is missing.");
     let db_path = matches.value_of("db_path");
     let db_time = matches.value_of("at_time");
+    let db_syn_mode_requested = matches.value_of("syn_mode");
+    let db_syn_mode;
+
+    match db_syn_mode_requested {
+        Some(S) => db_syn_mode = S,
+        None => db_syn_mode = "FULL",
+    }
     let db_read_only: bool = matches.is_present("read_only");
     let db_no_time: bool = matches.is_present("no_time_recording");
     let display_license: bool = matches.is_present("display_license");
+    let db_rollback_mode: bool = matches.is_present("rollback_mode");
     if (display_license) {
         println!("{}", LICENSE)
     }
@@ -128,7 +149,11 @@ fn main() {
                     };
                 } else {
                     if (db_no_time) {
-                        fs = match SqliteFs::new_no_time_recording(path) {
+                        fs = match SqliteFs::new_no_time_recording(
+                            path,
+                            !db_rollback_mode,
+                            db_syn_mode,
+                        ) {
                             Ok(n) => n,
                             Err(err) => {
                                 println!("{:?}", err);
@@ -136,7 +161,7 @@ fn main() {
                             }
                         };
                     } else {
-                        fs = match SqliteFs::new(path) {
+                        fs = match SqliteFs::new(path, !db_rollback_mode, db_syn_mode) {
                             Ok(n) => n,
                             Err(err) => {
                                 println!("{:?}", err);
