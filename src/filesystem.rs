@@ -1010,7 +1010,7 @@ impl Filesystem for SqliteFs {
         reply.opened(fh, 0);
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os="netbsd")))]
     fn readdir(
         &mut self,
         _req: &Request,
@@ -1035,7 +1035,7 @@ impl Filesystem for SqliteFs {
                 return;
             }
         };
-
+        debug!("READDIR: Offset: {}", offset);
         for (i, entry) in db_entries.iter().enumerate().skip(offset as usize) {
             let full = reply.add(
                 entry.child_ino as u64,
@@ -1057,7 +1057,7 @@ impl Filesystem for SqliteFs {
         reply.ok();
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os="netbsd"))]
     fn readdir(
         &mut self,
         _req: &Request,
