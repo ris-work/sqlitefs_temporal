@@ -102,17 +102,17 @@ fn update_time(inode: u32, sql: &str, time: DateTime<Utc>, tx: &Connection) -> R
 }
 
 fn update_atime(inode: u32, time: DateTime<Utc>, tx: &Connection) -> Result<()> {
-    let sql = "UPDATE metadata SET atime=datetime($1), atime_nsec=$2 WHERE id=$3";
+    let sql = "UPDATE temp.metadata SET atime=datetime($1), atime_nsec=$2 WHERE id=$3";
     update_time(inode, sql, time, tx)
 }
 
 fn update_mtime(inode: u32, time: DateTime<Utc>, tx: &Connection) -> Result<()> {
-    let sql = "UPDATE metadata SET mtime=datetime($1), mtime_nsec=$2 WHERE id=$3";
+    let sql = "UPDATE temp.metadata SET mtime=datetime($1), mtime_nsec=$2 WHERE id=$3";
     update_time(inode, sql, time, tx)
 }
 
 fn update_ctime(inode: u32, time: DateTime<Utc>, tx: &Connection) -> Result<()> {
-    let sql = "UPDATE metadata SET ctime=datetime($1), ctime_nsec=$2 WHERE id=$3";
+    let sql = "UPDATE temp.metadata SET ctime=datetime($1), ctime_nsec=$2 WHERE id=$3";
     update_time(inode, sql, time, tx)
 }
 
@@ -180,7 +180,7 @@ fn get_inode_local(inode: u32, tx: &Connection) -> Result<Option<DBFileAttr>> {
             metadata.rdev,\
             metadata.flags,\
             blocknum.block_num \
-            FROM metadata \
+            FROM temp.metadata \
             LEFT JOIN (SELECT count(block_num) block_num FROM data WHERE file_id=$1) AS blocknum \
             LEFT JOIN ( SELECT COUNT(child_id) nlink FROM dentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
             WHERE id=$1";
@@ -284,7 +284,7 @@ fn check_directory_is_empty_local(inode: u32, tx: &Connection) -> Result<bool> {
 }
 
 fn add_inode_local(attr: &DBFileAttr, tx: &Connection) -> Result<u32> {
-    let sql = "INSERT INTO metadata \
+    let sql = "INSERT INTO temp.metadata \
             (size,\
             atime,\
             atime_nsec,\
@@ -356,6 +356,7 @@ impl Sqlite {
         if (wal_mode) {
             conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
         }
+        conn.execute("PRAGMA main.auto_vacuum=FULL", [])?;
         conn.execute(&("PRAGMA main.synchronous=".to_string() + (syn_mode)), [])?;
         Ok(Sqlite {
             conn,
@@ -373,6 +374,7 @@ impl Sqlite {
         if (wal_mode) {
             conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
         }
+        conn.execute("PRAGMA main.auto_vacuum=FULL", [])?;
         conn.execute(&("PRAGMA main.synchronous=".to_string() + (syn_mode)), [])?;
         Ok(Sqlite {
             conn,
@@ -435,9 +437,9 @@ impl DbModule for Sqlite {
         {
             let row_count: u32 =
                 self.conn
-                    .query_row(table_search_sql, params!["metadata"], |row| row.get(0))?;
+                    .query_row(table_search_sql, params!["metadata_audit"], |row| row.get(0))?;
             if row_count == 0 {
-                let sql = "CREATE TABLE metadata(\
+                let sql = "CREATE TEMP TABLE metadata(\
                     id integer primary key AUTOINCREMENT,\
                     size int default 0 not null,\
                     atime text,\
@@ -482,8 +484,13 @@ impl DbModule for Sqlite {
                     )";
                 let res_audit_table = self.conn.execute(sql_audit_table, params![])?;
                 debug!("metadata table: {}", res_audit_table);
+            }
+            else {
+        self.conn.execute("CREATE TEMP VIEW vmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < '9999-99-99';", [])?;
+        self.conn.execute("CREATE TEMP TABLE metadata AS SELECT * FROM (SELECT max_ts, tmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';", [])?;
+            }
                 let sql_audit_trigger_delete = "\
-                CREATE TRIGGER audit_delete_metadata AFTER DELETE on metadata \
+                CREATE TEMP TRIGGER audit_delete_metadata AFTER DELETE on temp.metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
@@ -497,7 +504,7 @@ impl DbModule for Sqlite {
                     self.conn.execute(sql_audit_trigger_delete, params![])?;
                 debug!("metadata table: {}", res_audit_trigger_delete);
                 let sql_audit_trigger_update = "\
-                CREATE TRIGGER audit_update_metadata AFTER UPDATE on metadata \
+                CREATE TEMP TRIGGER audit_update_metadata AFTER UPDATE on temp.metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
@@ -511,7 +518,7 @@ impl DbModule for Sqlite {
                     self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("metadata table: {}", res_audit_trigger_update);
                 let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_insert_metadata AFTER INSERT on metadata \
+                CREATE TEMP TRIGGER audit_insert_metadata AFTER INSERT on temp.metadata \
                 BEGIN \
                     INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
@@ -524,7 +531,6 @@ impl DbModule for Sqlite {
                 let res_audit_trigger_insert =
                     self.conn.execute(sql_audit_trigger_insert, params![])?;
                 debug!("metadata table: {}", res_audit_trigger_insert);
-            }
         }
         {
             let row_count: u32 =
@@ -535,11 +541,13 @@ impl DbModule for Sqlite {
                     parent_id int,\
                     child_id int,\
                     file_type int,\
-                    name text,\
-                    foreign key (parent_id) references metadata(id) on delete cascade,\
-                    foreign key (child_id) references metadata(id) on delete cascade,\
+                    name text, \
                     primary key (parent_id, name) \
                     )";
+//                    foreign key (parent_id) references metadata(id) on delete cascade,\
+//                    foreign key (child_id) references metadata(id) on delete cascade,\
+//                    "primary key (parent_id, name) \
+//                    )";
                 self.conn.execute(sql, params![])?;
                 let sql_audit_table = "CREATE TABLE dentry_audit(\
                     seq integer PRIMARY KEY AUTOINCREMENT,\
@@ -610,7 +618,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_delete_data AFTER DELETE on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
-                    OLD.file_id, OLD.block_num, OLD.data \
+                    OLD.file_id, OLD.block_num, NULL \
                     ); \
                 END \
                 ";
@@ -798,7 +806,7 @@ impl DbModule for Sqlite {
     }
 
     fn update_inode(&mut self, attr: &DBFileAttr, truncate: bool) -> Result<()> {
-        let sql = "UPDATE metadata SET \
+        let sql = "UPDATE temp.metadata SET \
             size=$1,\
             atime=datetime($2),\
             atime_nsec=$3,\
@@ -869,7 +877,7 @@ impl DbModule for Sqlite {
             nlink = stmt.query_row(params![inode], |row| row.get(0))?;
         }
         if nlink == 0 {
-            let sql = "DELETE FROM metadata WHERE id=$1";
+            let sql = "DELETE FROM temp.metadata WHERE id=$1";
             tx.execute(sql, params![inode])?;
         }
         tx.commit()?;
@@ -1071,7 +1079,7 @@ impl DbModule for Sqlite {
             metadata.flags, \
             blocknum.block_num \
             FROM dentry \
-            INNER JOIN metadata \
+            INNER JOIN temp.metadata \
             ON metadata.id=dentry.child_id \
             AND dentry.parent_id=$1 \
             AND dentry.name=$2 \
@@ -1207,7 +1215,7 @@ impl DbModule for Sqlite {
             )?;
             if size > db_size {
                 tx.execute(
-                    "UPDATE metadata SET size=$1 WHERE id=$2",
+                    "UPDATE temp.metadata SET size=$1 WHERE id=$2",
                     params![size, inode],
                 )?;
             }
@@ -1229,7 +1237,7 @@ impl DbModule for Sqlite {
 
     fn delete_all_noref_inode(&mut self) -> Result<()> {
         self.conn.execute(
-            "DELETE FROM metadata WHERE NOT EXISTS (SELECT 'x' FROM dentry WHERE metadata.id = dentry.child_id)",
+            "DELETE FROM temp.metadata WHERE NOT EXISTS (SELECT 'x' FROM dentry WHERE metadata.id = dentry.child_id)",
             params![]
         )?;
         Ok(())
