@@ -659,13 +659,14 @@ impl DbModule for Sqlite {
                 self.conn
                     .query_row(table_search_sql, params!["xattr"], |row| row.get(0))?;
             if row_count == 0 {
-                let sql = "CREATE TABLE xattr(\
+                let sql = "CREATE TEMP TABLE xattr(\
                     file_id int,\
                     name text,\
-                    value text,\
-                    foreign key (file_id) references metadata(id) on delete cascade,\
-                    primary key (file_id, name) \
+                    value text\
                     )";
+                    //foreign key (file_id) references metadata(id) on delete cascade,\
+                    //primary key (file_id, name) \
+                    //)";
                 self.conn.execute(sql, params![])?;
                 let sql_audit_table = "CREATE TABLE xattr_audit(\
                     seq integer PRIMARY KEY AUTOINCREMENT,\
@@ -676,8 +677,14 @@ impl DbModule for Sqlite {
                     value text\
                     )";
                 self.conn.execute(sql_audit_table, params![])?;
+            }
+            else {
+
+        self.conn.execute("CREATE TEMP VIEW vxattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < 9999-99-99;", params![] )?;
+        self.conn.execute("CREATE TEMP TABLE xattr AS SELECT * FROM (SELECT max_ts, latest.name, latest.file_id, vxattr_audit_entries.name, vxattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM vxattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN vxattr_audit_entries ON vxattr_audit_entries.timestamp_utc=max_ts AND vxattr_audit_entries.file_id=latest.file_id AND vxattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE';", [])?;
+            }
                 let sql_audit_trigger_delete = "\
-                CREATE TRIGGER audit_delete_xattr AFTER DELETE on xattr \
+                CREATE TEMP TRIGGER audit_delete_xattr AFTER DELETE on xattr \
                 BEGIN \
                     INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
                     OLD.file_id, OLD.name, OLD.value \
@@ -688,7 +695,7 @@ impl DbModule for Sqlite {
                     self.conn.execute(sql_audit_trigger_delete, params![])?;
                 debug!("xattr table: {}", res_audit_trigger_delete);
                 let sql_audit_trigger_update = "\
-                CREATE TRIGGER audit_update_xattr AFTER UPDATE on xattr FOR EACH ROW \
+                CREATE TEMP TRIGGER audit_update_xattr AFTER UPDATE on xattr FOR EACH ROW \
                 BEGIN \
                     INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
                     NEW.file_id, NEW.name, NEW.value \
@@ -698,7 +705,7 @@ impl DbModule for Sqlite {
                     self.conn.execute(sql_audit_trigger_update, params![])?;
                 debug!("xattr table: {}", res_audit_trigger_update);
                 let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_insert_xattr AFTER INSERT on xattr FOR EACH ROW \
+                CREATE TEMP TRIGGER audit_insert_xattr AFTER INSERT on xattr FOR EACH ROW \
                 BEGIN \
                     INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
                     NEW.file_id, NEW.name, NEW.value \
@@ -707,7 +714,6 @@ impl DbModule for Sqlite {
                 let res_audit_trigger_insert =
                     self.conn.execute(sql_audit_trigger_insert, params![])?;
                 debug!("xattr table: {}", res_audit_trigger_insert);
-            }
         }
         {
             let sql = "SELECT count(id) FROM metadata WHERE id=1";
