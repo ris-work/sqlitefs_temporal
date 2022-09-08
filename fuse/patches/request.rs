@@ -365,7 +365,7 @@ impl<'a> Request<'a> {
                 se.filesystem.access(self, self.header.nodeid, arg.mask, self.reply());
             }
             FUSE_CREATE => {
-                #[cfg(not(target_os="netbsd"))]                let arg: &fuse_create_in = data.fetch();
+                #[cfg(not(target_os="netbsd"))]                let arg: &fuse_open_in = data.fetch();
                 #[cfg(target_os="netbsd")]                let arg: &fuse_create_in = data.fetch();
                 let name = data.fetch_str();
                 debug!("CREATE({}) parent {:#018x}, name {:?}, mode {:#05o}, flags {:#x}", self.header.unique, self.header.nodeid, name, arg.mode, arg.flags);
