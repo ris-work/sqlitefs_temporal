@@ -3,26 +3,26 @@ use fuse::{
     FileType, Filesystem, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty,
     ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, ReplyXattr, Request,
 };
-#[cfg(any(target_os = "freebsd", target_os="netbsd"))]
+#[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
 use libc::{
     c_int, EEXIST, EINVAL, EISDIR, ENAMETOOLONG, ENOATTR as ENODATA, ENOENT, ENOTDIR, ENOTEMPTY,
     EPERM, ERANGE, O_APPEND, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, S_ISGID, S_ISVTX,
 };
-#[cfg(not(any(target_os = "freebsd", target_os="netbsd")))]
+#[cfg(not(any(target_os = "freebsd", target_os = "netbsd")))]
 use libc::{
     c_int, EEXIST, EINVAL, EISDIR, ENAMETOOLONG, ENODATA, ENOENT, ENOTDIR, ENOTEMPTY, EPERM,
     ERANGE, O_APPEND, O_CREAT, O_RDONLY, O_RDWR, O_WRONLY, S_ISGID, S_ISVTX, XATTR_CREATE,
     XATTR_REPLACE,
 };
-#[cfg(any(target_os = "freebsd", target_os="netbsd"))]
+#[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
 const XATTR_REPLACE: u32 = 1;
-#[cfg(any(target_os = "freebsd", target_os="netbsd"))]
+#[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
 const XATTR_CREATE: u32 = 0;
 
-#[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os="netbsd")))]
+#[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "netbsd")))]
 use libc::O_NOATIME;
 
-#[cfg(any(target_os = "macos", target_os = "freebsd", target_os="netbsd"))]
+#[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "netbsd"))]
 const O_NOATIME: u32 = 0;
 
 use crate::db_module::sqlite::Sqlite;
@@ -1010,7 +1010,7 @@ impl Filesystem for SqliteFs {
         reply.opened(fh, 0);
     }
 
-    #[cfg(not(any(target_os = "macos", target_os="netbsd")))]
+    #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     fn readdir(
         &mut self,
         _req: &Request,
@@ -1057,7 +1057,7 @@ impl Filesystem for SqliteFs {
         reply.ok();
     }
 
-    #[cfg(any(target_os = "macos", target_os="netbsd"))]
+    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
     fn readdir(
         &mut self,
         _req: &Request,
