@@ -346,28 +346,34 @@ pub struct Sqlite {
 }
 
 impl Sqlite {
-    pub fn new(path: &Path) -> Result<Self> {
+    pub fn new(path: &Path, wal_mode: bool, syn_mode: &str) -> Result<Self> {
         let conn = Connection::open(path)?;
         let read_only = false;
         let time_recording = true;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row| Ok(true))?;
+        if (wal_mode) {
+            conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
+        }
+        conn.execute(&("PRAGMA main.synchronous=".to_string() + (syn_mode)), [])?;
         Ok(Sqlite {
             conn,
             read_only,
             time_recording,
         })
     }
-    pub fn new_no_time_recording(path: &Path) -> Result<Self> {
+    pub fn new_no_time_recording(path: &Path, wal_mode: bool, syn_mode: &str) -> Result<Self> {
         let conn = Connection::open(path)?;
         let read_only = false;
         let time_recording = false;
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
-        conn.query_row("PRAGMA journal_mode=WAL", [], |row| Ok(true))?;
+        if (wal_mode) {
+            conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
+        }
+        conn.execute(&("PRAGMA main.synchronous=".to_string() + (syn_mode)), [])?;
         Ok(Sqlite {
             conn,
             read_only,
