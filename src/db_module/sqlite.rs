@@ -495,7 +495,7 @@ impl DbModule for Sqlite {
                 debug!("metadata table: {}", res_audit_table);
             } else {
                 self.conn.execute("CREATE TEMP VIEW vmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < '9999-99-99';", [])?;
-                self.conn.execute(format!("INSERT INTO metadata SELECT id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags FROM (SELECT * FROM (SELECT max_ts, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
+                self.conn.execute(format!("INSERT INTO metadata SELECT id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags FROM (SELECT * FROM (SELECT max_seq, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(seq) as max_seq, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.seq=max_seq AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
             }
             if !self.read_only {
                 let sql_audit_trigger_delete = "\
