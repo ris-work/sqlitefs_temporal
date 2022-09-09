@@ -494,7 +494,7 @@ impl DbModule for Sqlite {
                 debug!("metadata table: {}", res_audit_table);
             } else {
                 self.conn.execute("CREATE TEMP VIEW vmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < '9999-99-99';", [])?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} metadata AS SELECT * FROM (SELECT max_ts, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
+                self.conn.execute(format!("CREATE TEMP {cr_type} metadata AS SELECT vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags FROM (SELECT max_ts, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
             }
             let sql_audit_trigger_delete = "\
                 CREATE TEMP TRIGGER audit_delete_metadata AFTER DELETE on temp.metadata \
@@ -568,7 +568,7 @@ impl DbModule for Sqlite {
                 self.conn.execute(sql_audit_table, params![])?;
             } else {
                 self.conn.execute("CREATE TEMP VIEW vdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < 9999-99-99;", params![])?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} dentry AS SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, vdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM vdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN vdentry_audit_entries ON vdentry_audit_entries.timestamp_utc=max_ts AND vdentry_audit_entries.child_id=latest.child_id AND vdentry_audit_entries.name = latest.name AND vdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
+                self.conn.execute(format!("CREATE TEMP {cr_type} dentry AS SELECT latest.parent_id, latest.child_id, vdentry_audit_entries.file_type, latest.name FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, vdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM vdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN vdentry_audit_entries ON vdentry_audit_entries.timestamp_utc=max_ts AND vdentry_audit_entries.child_id=latest.child_id AND vdentry_audit_entries.name = latest.name AND vdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
             }
             let sql_audit_trigger_delete = "\
                 CREATE TEMP TRIGGER audit_delete_dentry AFTER DELETE on dentry \
@@ -626,7 +626,7 @@ impl DbModule for Sqlite {
                 self.conn.execute(sql_audit_table, params![])?;
             } else {
                 self.conn.execute("CREATE TEMP VIEW vdata_audit_entries AS SELECT * FROM data_audit WHERE timestamp_utc < 9999-99-99;", params![])?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} data AS SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, vdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM vdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN vdata_audit_entries ON vdata_audit_entries.timestamp_utc=max_ts AND vdata_audit_entries.file_id=latest.file_id AND vdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
+                self.conn.execute(format!("CREATE TEMP {cr_type} data AS SELECT latest.file_id, latest.block_num, vdata_audit_entries.data FROM (SELECT max_ts, latest.block_num, latest.file_id, vdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM vdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN vdata_audit_entries ON vdata_audit_entries.timestamp_utc=max_ts AND vdata_audit_entries.file_id=latest.file_id AND vdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
             }
             let sql_audit_trigger_delete = "\
                 CREATE TEMP TRIGGER audit_delete_data AFTER DELETE on data \
@@ -685,7 +685,7 @@ impl DbModule for Sqlite {
                 self.conn.execute(sql_audit_table, params![])?;
             } else {
                 self.conn.execute("CREATE TEMP VIEW vxattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < 9999-99-99;", params![] )?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} xattr AS SELECT * FROM (SELECT max_ts, latest.name, latest.file_id, vxattr_audit_entries.name, vxattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM vxattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN vxattr_audit_entries ON vxattr_audit_entries.timestamp_utc=max_ts AND vxattr_audit_entries.file_id=latest.file_id AND vxattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
+                self.conn.execute(format!("CREATE TEMP {cr_type} xattr AS SELECT latest.file_id, vxattr_audit_entries.name, vxattr_audit_entries.value FROM (SELECT max_ts, latest.name, latest.file_id, vxattr_audit_entries.name, vxattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM vxattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN vxattr_audit_entries ON vxattr_audit_entries.timestamp_utc=max_ts AND vxattr_audit_entries.file_id=latest.file_id AND vxattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE';").as_str(), [])?;
             }
             let sql_audit_trigger_delete = "\
                 CREATE TEMP TRIGGER audit_delete_xattr AFTER DELETE on xattr \
