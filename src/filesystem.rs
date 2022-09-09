@@ -1010,7 +1010,7 @@ impl Filesystem for SqliteFs {
         reply.opened(fh, 0);
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
+    #[cfg(not(any(target_os = "macos", target_os = "netbsd", target_os="freebsd")))]
     fn readdir(
         &mut self,
         _req: &Request,
@@ -1057,7 +1057,7 @@ impl Filesystem for SqliteFs {
         reply.ok();
     }
 
-    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
+    #[cfg(any(target_os = "macos", target_os = "netbsd", target_os="freebsd"))]
     fn readdir(
         &mut self,
         _req: &Request,
