@@ -434,7 +434,8 @@ impl DbModule for Sqlite {
     fn init(&mut self) -> Result<()> {
         let cr_type;
         if self.read_only {
-            cr_type = "VIEW";
+            //cr_type = "VIEW"; // Doesn't need extra space. Abysmal performance.
+            cr_type = "TABLE";
         } else {
             cr_type = "TABLE";
         }
