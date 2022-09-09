@@ -442,12 +442,6 @@ impl DbModule for Sqlite {
         let table_search_sql =
             "SELECT count(name) FROM sqlite_master WHERE type='table' AND name=$1";
         {
-            let row_count: u32 =
-                self.conn
-                    .query_row(table_search_sql, params!["metadata_audit"], |row| {
-                        row.get(0)
-                    })?;
-            if row_count == 0 {
                 let sql = "CREATE TEMP TABLE metadata(\
                     id integer primary key AUTOINCREMENT,\
                     size int default 0 not null,\
@@ -469,6 +463,12 @@ impl DbModule for Sqlite {
                     )";
                 let res = self.conn.execute(sql, params![])?;
                 debug!("metadata table: {}", res);
+            let row_count: u32 =
+                self.conn
+                    .query_row(table_search_sql, params!["metadata_audit"], |row| {
+                        row.get(0)
+                    })?;
+            if row_count == 0 {
                 let sql_audit_table = "CREATE TABLE metadata_audit(\
                     seq integer PRIMARY KEY AUTOINCREMENT,\
                     timestamp_utc text,\
@@ -495,7 +495,7 @@ impl DbModule for Sqlite {
                 debug!("metadata table: {}", res_audit_table);
             } else {
                 self.conn.execute("CREATE TEMP VIEW vmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < '9999-99-99';", [])?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} metadata AS SELECT id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags FROM (SELECT * FROM (SELECT max_ts, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
+                self.conn.execute(format!("INSERT INTO metadata SELECT id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags FROM (SELECT * FROM (SELECT max_ts, vmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM vmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN vmetadata_audit_entries ON vmetadata_audit_entries.timestamp_utc=max_ts AND vmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
             }
             if !self.read_only {
                 let sql_audit_trigger_delete = "\
@@ -543,10 +543,6 @@ impl DbModule for Sqlite {
             }
         }
         {
-            let row_count: u32 =
-                self.conn
-                    .query_row(table_search_sql, params!["dentry_audit"], |row| row.get(0))?;
-            if row_count == 0 {
                 let sql = "CREATE TEMP TABLE dentry(\
                     parent_id int,\
                     child_id int,\
@@ -559,6 +555,10 @@ impl DbModule for Sqlite {
                 //                    "primary key (parent_id, name) \
                 //                    )";
                 self.conn.execute(sql, params![])?;
+            let row_count: u32 =
+                self.conn
+                    .query_row(table_search_sql, params!["dentry_audit"], |row| row.get(0))?;
+            if row_count == 0 {
                 let sql_audit_table = "CREATE TABLE dentry_audit(\
                     seq integer PRIMARY KEY AUTOINCREMENT,\
                     timestamp_utc text,\
@@ -571,7 +571,7 @@ impl DbModule for Sqlite {
                 self.conn.execute(sql_audit_table, params![])?;
             } else {
                 self.conn.execute("CREATE TEMP VIEW vdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < 9999-99-99;", params![])?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} dentry AS SELECT parent_id, child_id, file_type, name FROM (SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, vdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM vdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN vdentry_audit_entries ON vdentry_audit_entries.timestamp_utc=max_ts AND vdentry_audit_entries.child_id=latest.child_id AND vdentry_audit_entries.name = latest.name AND vdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
+                self.conn.execute(format!("INSERT INTO dentry SELECT parent_id, child_id, file_type, name FROM (SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, vdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM vdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN vdentry_audit_entries ON vdentry_audit_entries.timestamp_utc=max_ts AND vdentry_audit_entries.child_id=latest.child_id AND vdentry_audit_entries.name = latest.name AND vdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
             }
             if !self.read_only {
                 let sql_audit_trigger_delete = "\
@@ -611,7 +611,6 @@ impl DbModule for Sqlite {
             let row_count: u32 =
                 self.conn
                     .query_row(table_search_sql, params!["data_audit"], |row| row.get(0))?;
-            if row_count == 0 {
                 let sql = "CREATE TEMP TABLE data(\
                     file_id int,\
                     block_num int,\
@@ -620,6 +619,7 @@ impl DbModule for Sqlite {
                     primary key (file_id, block_num) \
                     )";
                 self.conn.execute(sql, params![])?;
+            if row_count == 0 {
                 let sql_audit_table = "CREATE TABLE data_audit(\
                     seq integer PRIMARY KEY AUTOINCREMENT,\
                     timestamp_utc text,\
@@ -631,7 +631,7 @@ impl DbModule for Sqlite {
                 self.conn.execute(sql_audit_table, params![])?;
             } else {
                 self.conn.execute("CREATE TEMP VIEW vdata_audit_entries AS SELECT * FROM data_audit WHERE timestamp_utc < 9999-99-99;", params![])?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} data AS SELECT file_id, block_num, data FROM (SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, vdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM vdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN vdata_audit_entries ON vdata_audit_entries.timestamp_utc=max_ts AND vdata_audit_entries.file_id=latest.file_id AND vdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
+                self.conn.execute(format!("INSERT INTO data SELECT file_id, block_num, data FROM (SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, vdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM vdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN vdata_audit_entries ON vdata_audit_entries.timestamp_utc=max_ts AND vdata_audit_entries.file_id=latest.file_id AND vdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
             }
             if !self.read_only {
                 let sql_audit_trigger_delete = "\
@@ -671,7 +671,6 @@ impl DbModule for Sqlite {
             let row_count: u32 =
                 self.conn
                     .query_row(table_search_sql, params!["xattr_audit"], |row| row.get(0))?;
-            if row_count == 0 {
                 let sql = "CREATE TEMP TABLE xattr(\
                     file_id int,\
                     name text,\
@@ -681,6 +680,7 @@ impl DbModule for Sqlite {
                 //primary key (file_id, name) \
                 //)";
                 self.conn.execute(sql, params![])?;
+            if row_count == 0 {
                 let sql_audit_table = "CREATE TABLE xattr_audit(\
                     seq integer PRIMARY KEY AUTOINCREMENT,\
                     timestamp_utc text,\
@@ -692,7 +692,7 @@ impl DbModule for Sqlite {
                 self.conn.execute(sql_audit_table, params![])?;
             } else {
                 self.conn.execute("CREATE TEMP VIEW vxattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < 9999-99-99;", params![] )?;
-                self.conn.execute(format!("CREATE TEMP {cr_type} xattr AS SELECT file_id, name, value FROM (SELECT * FROM (SELECT max_ts, latest.name, latest.file_id, vxattr_audit_entries.name, vxattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM vxattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN vxattr_audit_entries ON vxattr_audit_entries.timestamp_utc=max_ts AND vxattr_audit_entries.file_id=latest.file_id AND vxattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
+                self.conn.execute(format!("INSERT INTO xattr SELECT file_id, name, value FROM (SELECT * FROM (SELECT max_ts, latest.name, latest.file_id, vxattr_audit_entries.name, vxattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM vxattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN vxattr_audit_entries ON vxattr_audit_entries.timestamp_utc=max_ts AND vxattr_audit_entries.file_id=latest.file_id AND vxattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE');").as_str(), [])?;
             }
             if !self.read_only {
                 let sql_audit_trigger_delete = "\
