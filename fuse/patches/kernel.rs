@@ -239,8 +239,8 @@ pub struct fuse_entry_out {
 pub struct fuse_entry_out {
     pub nodeid: u64,
     pub generation: u64,
-    pub entry_valid: i64,
-    pub attr_valid: i64,
+    pub entry_valid: u64,
+    pub attr_valid: u64,
     pub entry_valid_nsec: u32,
     pub attr_valid_nsec: u32,
     pub attr: fuse_attr,
