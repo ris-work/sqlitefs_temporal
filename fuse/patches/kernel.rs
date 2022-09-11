@@ -51,7 +51,7 @@ pub struct fuse_attr {
     #[cfg(target_os = "macos")]
     pub flags: u32,                                     // see chflags(2)
     #[cfg(target_os = "netbsd")]
-    pub blksize: u32,                                     // see librefuse/fuse.h
+    pub blksize: u32,                                     // see libperfuse/fuse.h
     #[cfg(target_os = "netbsd")]
     pub padding: u32,                                     
 }
