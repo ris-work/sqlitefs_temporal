@@ -772,7 +772,7 @@ impl Filesystem for SqliteFs {
                 debug!("{} {} {}", i, start_block, offset % block_size);
                 let data_offset;
                 if (i > start_block) {
-                    //HERE WAS THE BUG
+                    //The blocks don't need to be in perfect alignment.
                     data_offset =
                         ((i - start_block - 1) * block_size) + (block_size) - offset % block_size;
                 } else {
