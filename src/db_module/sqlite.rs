@@ -189,41 +189,6 @@ fn get_inode_local(inode: u32, tx: &Connection) -> Result<Option<DBFileAttr>> {
     debug!("Running {} with {}", sql, inode);
     parse_attr(stmt, params)
 }
-fn get_inode_local_at_time(
-    inode: u32,
-    tx: &Connection,
-    time: String,
-) -> Result<Option<DBFileAttr>> {
-    debug! {"get_inode_local_at_time called: {} {}", inode, time};
-    let sql = "SELECT \
-            tmetadata.id,\
-            tmetadata.size,\
-            tmetadata.atime,\
-            tmetadata.atime_nsec,\
-            tmetadata.mtime,\
-            tmetadata.mtime_nsec,\
-            tmetadata.ctime,\
-            tmetadata.ctime_nsec,\
-            tmetadata.crtime,\
-            tmetadata.crtime_nsec,\
-            tmetadata.kind, \
-            tmetadata.mode,\
-            ncount.nlink,\
-            tmetadata.uid,\
-            tmetadata.gid,\
-            tmetadata.rdev,\
-            tmetadata.flags,\
-            blocknum.block_num \
-            FROM tmetadata \
-            LEFT JOIN (SELECT count(block_num) block_num FROM tdata WHERE file_id=$1) AS blocknum \
-            LEFT JOIN ( SELECT COUNT(child_id) nlink FROM tdentry WHERE child_id=$1 GROUP BY child_id) AS ncount \
-            WHERE id=$1 AND ncount.nlink IS NOT NULL";
-    let stmt = tx.prepare(sql)?;
-    debug! {"Statement prepared for get_inode_at_time."};
-    let params = params![inode];
-    debug!("Running {} with {}", sql, inode);
-    parse_attr(stmt, params)
-}
 
 fn get_dentry_single(parent: u32, name: &str, tx: &Connection) -> Result<Option<DEntry>> {
     let sql = "SELECT child_id, file_type FROM dentry WHERE  parent_id=$1 and name=$2";
@@ -374,28 +339,6 @@ impl Sqlite {
             conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
         }
         conn.execute(&("PRAGMA main.synchronous=".to_string() + (syn_mode)), [])?;
-        Ok(Sqlite {
-            conn,
-            read_only,
-            time_recording,
-        })
-    }
-    pub fn new_at_time(path: &Path, time: String) -> Result<Self> {
-        let conn = Connection::open(path)?;
-        let read_only = true;
-        let time_recording = true;
-        // enable foreign key. Sqlite ignores foreign key by default.
-        conn.execute("PRAGMA foreign_keys=ON", [])?;
-        conn.execute("CREATE TEMP TABLE tdentry_audit_entries AS SELECT * FROM dentry_audit WHERE timestamp_utc < (?1);", params![time])?;
-        conn.execute("CREATE TEMP TABLE tmetadata_audit_entries AS SELECT * FROM metadata_audit WHERE timestamp_utc < (?1);", params![time])?;
-        conn.execute("CREATE TEMP TABLE tdata_audit_entries AS SELECT * FROM data_audit WHERE timestamp_utc < (?1);", params![time])?;
-        conn.execute("CREATE TEMP TABLE txattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < (?1);", params![time] )?;
-        //STRATEGY: (SELECT  max(timestamp) utc, CK/PK FROM table GROUP BY CK/PK) as latest, join on max_ts, CK/PK with table's.
-        //conn.execute("CREATE TEMP TABLE txattr_audit_entries AS SELECT * FROM xattr_audit WHERE timestamp_utc < (?1);", params![time] )?;
-        conn.execute("CREATE TEMP TABLE tdentry AS SELECT * FROM (SELECT max_ts, latest.parent_id, latest.child_id, TG_OP, latest.name, tdentry_audit_entries.file_type from (SELECT max(timestamp_utc) as max_ts, parent_id, child_id, name FROM tdentry_audit_entries as latest GROUP BY parent_id, child_id, name) as latest INNER JOIN tdentry_audit_entries ON tdentry_audit_entries.timestamp_utc=max_ts AND tdentry_audit_entries.child_id=latest.child_id AND tdentry_audit_entries.name = latest.name AND tdentry_audit_entries.parent_id=latest.parent_id) WHERE TG_OP IS NOT 'DELETE';", [])?;
-        conn.execute("CREATE TEMP TABLE tdata AS SELECT * FROM (SELECT max_ts, latest.block_num, latest.file_id, tdata_audit_entries.data, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, block_num FROM tdata_audit_entries as latest GROUP BY file_id, block_num) as latest INNER JOIN tdata_audit_entries ON tdata_audit_entries.timestamp_utc=max_ts AND tdata_audit_entries.file_id=latest.file_id AND tdata_audit_entries.block_num = latest.block_num) WHERE TG_OP IS NOT 'DELETE';", [])?;
-        conn.execute("CREATE TEMP TABLE txattr AS SELECT * FROM (SELECT max_ts, latest.name, latest.file_id, txattr_audit_entries.name, txattr_audit_entries.value, TG_OP from (SELECT max(timestamp_utc) as max_ts, file_id, name FROM txattr_audit_entries as latest GROUP BY file_id, name) as latest INNER JOIN txattr_audit_entries ON txattr_audit_entries.timestamp_utc=max_ts AND txattr_audit_entries.file_id=latest.file_id AND txattr_audit_entries.name = latest.name) WHERE TG_OP IS NOT 'DELETE';", [])?;
-        conn.execute("CREATE TEMP TABLE tmetadata AS SELECT * FROM (SELECT max_ts, tmetadata_audit_entries.id, size, atime, atime_nsec, mtime, mtime_nsec, ctime, ctime_nsec, crtime, crtime_nsec, kind, mode, nlink, uid, gid, rdev, flags, TG_OP from (SELECT max(timestamp_utc) as max_ts, id FROM tmetadata_audit_entries as latest GROUP BY id) as latest INNER JOIN tmetadata_audit_entries ON tmetadata_audit_entries.timestamp_utc=max_ts AND tmetadata_audit_entries.id=latest.id) WHERE TG_OP IS NOT 'DELETE';", [])?;
         Ok(Sqlite {
             conn,
             read_only,
@@ -563,17 +506,6 @@ impl DbModule for Sqlite {
     fn get_inode(&self, inode: u32) -> Result<Option<DBFileAttr>> {
         get_inode_local(inode, &self.conn)
     }
-    fn get_inode_at_time(&self, inode: u32, time: String) -> Result<Option<DBFileAttr>> {
-        debug! {"get_inode_at_time: {}, {}", inode, time};
-        let r = get_inode_local_at_time(inode, &self.conn, time);
-        match r {
-            Err(ref x) => {
-                debug! {"ERROR: {}", format!("{}", x)};
-                return r;
-            }
-            Ok(_) => return r,
-        }
-    }
 
     fn add_inode_and_dentry(&mut self, parent: u32, name: &str, attr: &DBFileAttr) -> Result<u32> {
         let tx = self.conn.transaction()?;
@@ -691,23 +623,6 @@ impl DbModule for Sqlite {
 
     fn get_dentry(&self, inode: u32) -> Result<Vec<DEntry>> {
         let sql = "SELECT child_id, file_type, name FROM dentry WHERE parent_id=$1 ORDER BY name";
-        let mut stmt = self.conn.prepare(sql)?;
-        let rows = stmt.query_map(params![inode], |row| {
-            Ok(DEntry {
-                parent_ino: inode,
-                child_ino: row.get(0)?,
-                file_type: const_to_file_type(row.get(1)?),
-                filename: row.get(2)?,
-            })
-        })?;
-        let mut entries: Vec<DEntry> = Vec::new();
-        for row in rows {
-            entries.push(row?);
-        }
-        Ok(entries)
-    }
-    fn get_dentry_at_time(&self, inode: u32, _time: String) -> Result<Vec<DEntry>> {
-        let sql = "SELECT child_id, file_type, name FROM tdentry WHERE parent_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| {
             Ok(DEntry {
@@ -903,49 +818,6 @@ impl DbModule for Sqlite {
         tx.commit()?;
         result
     }
-    fn lookup_at_time(
-        &mut self,
-        parent: u32,
-        name: &str,
-        _time: String,
-    ) -> Result<Option<DBFileAttr>> {
-        let sql = "SELECT \
-            tmetadata.id,\
-            tmetadata.size,\
-            tmetadata.atime,\
-            tmetadata.atime_nsec,\
-            tmetadata.mtime,\
-            tmetadata.mtime_nsec,\
-            tmetadata.ctime,\
-            tmetadata.ctime_nsec,\
-            tmetadata.crtime,\
-            tmetadata.crtime_nsec,\
-            tmetadata.kind, \
-            tmetadata.mode,\
-            ncount.nlink,\
-            tmetadata.uid,\
-            tmetadata.gid,\
-            tmetadata.rdev,\
-            tmetadata.flags, \
-            blocknum.block_num \
-            FROM tdentry \
-            INNER JOIN tmetadata \
-            ON tmetadata.id=tdentry.child_id \
-            AND tdentry.parent_id=$1 \
-            AND tdentry.name=$2 \
-            LEFT JOIN (SELECT file_id file_id, count(block_num) block_num from tdata) AS blocknum \
-            ON tdentry.child_id = blocknum.file_id \
-            LEFT JOIN ( SELECT child_id, COUNT(child_id) nlink FROM tdentry GROUP BY child_id) AS ncount \
-            ON tdentry.child_id = ncount.child_id \
-            ";
-        let tx = self.conn.transaction()?;
-        let stmt = tx.prepare(sql)?;
-        let params = params![parent, name];
-        let result = parse_attr(stmt, params);
-        //update_atime(parent, Utc::now(), &tx)?;
-        tx.commit()?;
-        result
-    }
 
     fn get_data(&mut self, inode: u32, block: u32, length: u32) -> Result<Vec<u8>> {
         let tx = self.conn.transaction()?;
@@ -967,37 +839,6 @@ impl DbModule for Sqlite {
             };
         }
         if ((!(self.read_only)) && self.time_recording) {
-            update_atime(inode, Utc::now(), &tx)?;
-        }
-        tx.commit()?;
-        Ok(row)
-    }
-    fn get_data_at_time(
-        &mut self,
-        inode: u32,
-        block: u32,
-        length: u32,
-        _time: String,
-    ) -> Result<Vec<u8>> {
-        let tx = self.conn.transaction()?;
-        let row: Vec<u8>;
-        {
-            let mut stmt = tx.prepare(
-                "SELECT \
-                data FROM tdata WHERE file_id=$1 AND block_num=$2",
-            )?;
-            row = match stmt.query_row(params![inode, block], |row| row.get(0)) {
-                Ok(n) => n,
-                Err(err) => {
-                    if err == rusqlite::Error::QueryReturnedNoRows {
-                        vec![0; length as usize]
-                    } else {
-                        return Err(Error::from(err));
-                    }
-                }
-            };
-        }
-        if (self.time_recording) {
             update_atime(inode, Utc::now(), &tx)?;
         }
         tx.commit()?;
@@ -1051,9 +892,6 @@ impl DbModule for Sqlite {
     fn get_db_block_size(&self) -> u32 {
         BLOCK_SIZE
     }
-    fn get_db_block_size_at_time(&self, _time: String) -> u32 {
-        BLOCK_SIZE
-    }
 
     fn set_xattr(&mut self, inode: u32, key: &str, value: &[u8]) -> Result<()> {
         let tx = self.conn.transaction()?;
@@ -1092,38 +930,9 @@ impl DbModule for Sqlite {
         };
         Ok(row)
     }
-    fn get_xattr_at_time(&self, inode: u32, key: &str, _time: String) -> Result<Vec<u8>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT \
-            value FROM txattr WHERE file_id=$1 AND name=$2",
-        )?;
-        let row: Vec<u8> = match stmt.query_row(params![inode, key], |row| row.get(0)) {
-            Ok(n) => n,
-            Err(err) => {
-                if err == rusqlite::Error::QueryReturnedNoRows {
-                    return Err(Error::from(ErrorKind::FsNoEnt {
-                        description: format!("inode: {} name:{}", inode, key),
-                    }));
-                } else {
-                    return Err(Error::from(err));
-                }
-            }
-        };
-        Ok(row)
-    }
 
     fn list_xattr(&self, inode: u32) -> Result<Vec<String>> {
         let sql = "SELECT name FROM xattr WHERE file_id=$1 ORDER BY name";
-        let mut stmt = self.conn.prepare(sql)?;
-        let rows = stmt.query_map(params![inode], |row| Ok(row.get(0)?))?;
-        let mut name_list: Vec<String> = Vec::new();
-        for row in rows {
-            name_list.push(row?);
-        }
-        Ok(name_list)
-    }
-    fn list_xattr_at_time(&self, inode: u32, _time: String) -> Result<Vec<String>> {
-        let sql = "SELECT name FROM txattr WHERE file_id=$1 ORDER BY name";
         let mut stmt = self.conn.prepare(sql)?;
         let rows = stmt.query_map(params![inode], |row| Ok(row.get(0)?))?;
         let mut name_list: Vec<String> = Vec::new();
