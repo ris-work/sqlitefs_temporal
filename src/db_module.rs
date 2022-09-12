@@ -11,7 +11,6 @@ pub trait DbModule {
     fn init(&mut self) -> Result<()>;
     /// Get metadata. If not found, return None
     fn get_inode(&self, inode: u32) -> Result<Option<DBFileAttr>>;
-    fn get_inode_at_time(&self, inode: u32, time: String) -> Result<Option<DBFileAttr>>;
     /// Add a file or a directory.
     /// Update atime, mtime, ctime. Update mtime and ctime of the parent directory.
     fn add_inode_and_dentry(&mut self, parent: u32, name: &str, attr: &DBFileAttr) -> Result<u32>;
@@ -22,7 +21,6 @@ pub trait DbModule {
     fn delete_inode_if_noref(&mut self, inode: u32) -> Result<()>;
     /// Get directory entries
     fn get_dentry(&self, inode: u32) -> Result<Vec<DEntry>>;
-    fn get_dentry_at_time(&self, inode: u32, time: String) -> Result<Vec<DEntry>>;
     /// Add a new directory entry which is hard link
     /// Update mtime, Update mtime and ctime of the parent directory.
     fn link_dentry(&mut self, inode: u32, parent: u32, name: &str) -> Result<DBFileAttr>;
@@ -44,22 +42,9 @@ pub trait DbModule {
     /// If not found, return None.
     /// Update atime.
     fn lookup(&mut self, parent: u32, name: &str) -> Result<Option<DBFileAttr>>;
-    fn lookup_at_time(
-        &mut self,
-        parent: u32,
-        name: &str,
-        time: String,
-    ) -> Result<Option<DBFileAttr>>;
     /// Read data from a whole block.
     /// Update atime.
     fn get_data(&mut self, inode: u32, block: u32, length: u32) -> Result<Vec<u8>>;
-    fn get_data_at_time(
-        &mut self,
-        inode: u32,
-        block: u32,
-        length: u32,
-        time: String,
-    ) -> Result<Vec<u8>>;
     /// Write data into a whole block.
     /// Update mtime and ctime.
     fn write_data(&mut self, inode: u32, block: u32, data: &[u8], size: u32) -> Result<()>;
@@ -69,15 +54,12 @@ pub trait DbModule {
     fn delete_all_noref_inode(&mut self) -> Result<()>;
     /// Get block size of the filesystem
     fn get_db_block_size(&self) -> u32;
-    fn get_db_block_size_at_time(&self, time: String) -> u32;
     /// Set xattr value.
     fn set_xattr(&mut self, inode: u32, key: &str, value: &[u8]) -> Result<()>;
     /// Get xattr value.
     fn get_xattr(&self, inode: u32, key: &str) -> Result<Vec<u8>>;
-    fn get_xattr_at_time(&self, inode: u32, key: &str, time: String) -> Result<Vec<u8>>;
     /// List xattr name.
     fn list_xattr(&self, inode: u32) -> Result<Vec<String>>;
-    fn list_xattr_at_time(&self, inode: u32, time: String) -> Result<Vec<String>>;
     /// Delete xattr
     fn delete_xattr(&mut self, inode: u32, key: &str) -> Result<()>;
 }
