@@ -458,72 +458,6 @@ impl DbModule for Sqlite {
                     )";
                 let res = self.conn.execute(sql, params![])?;
                 debug!("metadata table: {}", res);
-                let sql_audit_table = "CREATE TABLE metadata_audit(\
-                    seq integer PRIMARY KEY AUTOINCREMENT,\
-                    timestamp_utc text,\
-                    TG_OP text,\
-                    id integer,\
-                    size int default 0,\
-                    atime text,\
-                    atime_nsec int,\
-                    mtime text,\
-                    mtime_nsec int,\
-                    ctime text,\
-                    ctime_nsec int,\
-                    crtime text,\
-                    crtime_nsec int,\
-                    kind int,\
-                    mode int,\
-                    nlink int default 0,\
-                    uid int default 0,\
-                    gid int default 0,\
-                    rdev int default 0,\
-                    flags int default 0 \
-                    )";
-                let res_audit_table = self.conn.execute(sql_audit_table, params![])?;
-                debug!("metadata table: {}", res_audit_table);
-                let sql_audit_trigger_delete = "\
-                CREATE TRIGGER audit_delete_metadata AFTER DELETE on metadata \
-                BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
-                    OLD.id, OLD.size, OLD.atime, OLD.atime_nsec, \
-                    OLD.mtime, OLD.mtime_nsec, OLD.ctime, OLD.ctime_nsec, \
-                    OLD.crtime, OLD.crtime_nsec, \
-                    OLD.kind, OLD.mode, OLD.nlink, \
-                    OLD.uid, OLD.gid, OLD.rdev, OLD.flags); \
-                END \
-                ";
-                let res_audit_trigger_delete =
-                    self.conn.execute(sql_audit_trigger_delete, params![])?;
-                debug!("metadata table: {}", res_audit_trigger_delete);
-                let sql_audit_trigger_update = "\
-                CREATE TRIGGER audit_update_metadata AFTER UPDATE on metadata \
-                BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
-                    NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
-                    NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
-                    NEW.crtime, NEW.crtime_nsec, \
-                    NEW.kind, NEW.mode, NEW.nlink, \
-                    NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
-                END \
-                ";
-                let res_audit_trigger_update =
-                    self.conn.execute(sql_audit_trigger_update, params![])?;
-                debug!("metadata table: {}", res_audit_trigger_update);
-                let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_insert_metadata AFTER INSERT on metadata \
-                BEGIN \
-                    INSERT INTO metadata_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
-                    NEW.id, NEW.size, NEW.atime, NEW.atime_nsec, \
-                    NEW.mtime, NEW.mtime_nsec, NEW.ctime, NEW.ctime_nsec, \
-                    NEW.crtime, NEW.crtime_nsec, \
-                    NEW.kind, NEW.mode, NEW.nlink, \
-                    NEW.uid, NEW.gid, NEW.rdev, NEW.flags); \
-                END \
-                ";
-                let res_audit_trigger_insert =
-                    self.conn.execute(sql_audit_trigger_insert, params![])?;
-                debug!("metadata table: {}", res_audit_trigger_insert);
             }
         }
         {
@@ -541,47 +475,6 @@ impl DbModule for Sqlite {
                     primary key (parent_id, name) \
                     )";
                 self.conn.execute(sql, params![])?;
-                let sql_audit_table = "CREATE TABLE dentry_audit(\
-                    seq integer PRIMARY KEY AUTOINCREMENT,\
-                    timestamp_utc text,\
-                    TG_OP text,\
-                    parent_id int,\
-                    child_id int,\
-                    file_type int,\
-                    name text\
-                    )";
-                self.conn.execute(sql_audit_table, params![])?;
-                let sql_audit_trigger_delete = "\
-                CREATE TRIGGER audit_delete_dentry AFTER DELETE on dentry \
-                BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
-                    OLD.parent_id, OLD.child_id, OLD.file_type, \
-                    OLD.name); \
-                END \
-                ";
-                let res_audit_trigger_delete =
-                    self.conn.execute(sql_audit_trigger_delete, params![])?;
-                debug!("dentry table: {}", res_audit_trigger_delete);
-                let sql_audit_trigger_update = "\
-                CREATE TRIGGER audit_update_dentry AFTER UPDATE on dentry \
-                BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
-                    NEW.parent_id, NEW.child_id, NEW.file_type, \
-                    NEW.name); \
-                END";
-                let res_audit_trigger_update =
-                    self.conn.execute(sql_audit_trigger_update, params![])?;
-                debug!("dentry table: {}", res_audit_trigger_update);
-                let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_insert_dentry AFTER INSERT on dentry \
-                BEGIN \
-                    INSERT INTO dentry_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
-                    NEW.parent_id, NEW.child_id, NEW.file_type, \
-                    NEW.name); \
-                END";
-                let res_audit_trigger_insert =
-                    self.conn.execute(sql_audit_trigger_insert, params![])?;
-                debug!("dentry table: {}", res_audit_trigger_insert);
             }
         }
         {
@@ -597,46 +490,6 @@ impl DbModule for Sqlite {
                     primary key (file_id, block_num) \
                     )";
                 self.conn.execute(sql, params![])?;
-                let sql_audit_table = "CREATE TABLE data_audit(\
-                    seq integer PRIMARY KEY AUTOINCREMENT,\
-                    timestamp_utc text,\
-                    TG_OP text,\
-                    file_id int,\
-                    block_num int,\
-                    data blob\
-                    )";
-                self.conn.execute(sql_audit_table, params![])?;
-                let sql_audit_trigger_delete = "\
-                CREATE TRIGGER audit_delete_data AFTER DELETE on data \
-                BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
-                    OLD.file_id, OLD.block_num, OLD.data \
-                    ); \
-                END \
-                ";
-                let res_audit_trigger_delete =
-                    self.conn.execute(sql_audit_trigger_delete, params![])?;
-                debug!("data table: {}", res_audit_trigger_delete);
-                let sql_audit_trigger_update = "\
-                CREATE TRIGGER audit_update_data AFTER UPDATE on data \
-                BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
-                    NEW.file_id, NEW.block_num, NEW.data \
-                    ); \
-                END";
-                let res_audit_trigger_update =
-                    self.conn.execute(sql_audit_trigger_update, params![])?;
-                debug!("data table: {}", res_audit_trigger_update);
-                let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_insert_data AFTER INSERT on data \
-                BEGIN \
-                    INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
-                    NEW.file_id, NEW.block_num, NEW.data \
-                    ); \
-                END";
-                let res_audit_trigger_insert =
-                    self.conn.execute(sql_audit_trigger_insert, params![])?;
-                debug!("data table: {}", res_audit_trigger_insert);
             }
         }
         {
@@ -652,46 +505,6 @@ impl DbModule for Sqlite {
                     primary key (file_id, name) \
                     )";
                 self.conn.execute(sql, params![])?;
-                let sql_audit_table = "CREATE TABLE xattr_audit(\
-                    seq integer PRIMARY KEY AUTOINCREMENT,\
-                    timestamp_utc text,\
-                    TG_OP text,\
-                    file_id int,\
-                    name text,\
-                    value text\
-                    )";
-                self.conn.execute(sql_audit_table, params![])?;
-                let sql_audit_trigger_delete = "\
-                CREATE TRIGGER audit_delete_xattr AFTER DELETE on xattr \
-                BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'DELETE', \
-                    OLD.file_id, OLD.name, OLD.value \
-                    );\
-                END \
-                ";
-                let res_audit_trigger_delete =
-                    self.conn.execute(sql_audit_trigger_delete, params![])?;
-                debug!("xattr table: {}", res_audit_trigger_delete);
-                let sql_audit_trigger_update = "\
-                CREATE TRIGGER audit_update_xattr AFTER UPDATE on xattr FOR EACH ROW \
-                BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
-                    NEW.file_id, NEW.name, NEW.value \
-                    ); \
-                END";
-                let res_audit_trigger_update =
-                    self.conn.execute(sql_audit_trigger_update, params![])?;
-                debug!("xattr table: {}", res_audit_trigger_update);
-                let sql_audit_trigger_insert = "\
-                CREATE TRIGGER audit_insert_xattr AFTER INSERT on xattr FOR EACH ROW \
-                BEGIN \
-                    INSERT INTO xattr_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'INSERT', \
-                    NEW.file_id, NEW.name, NEW.value \
-                    ); \
-                END";
-                let res_audit_trigger_insert =
-                    self.conn.execute(sql_audit_trigger_insert, params![])?;
-                debug!("xattr table: {}", res_audit_trigger_insert);
             }
         }
         {
