@@ -87,8 +87,6 @@ pub struct SqliteFs {
     open_file_handler: Arc<Mutex<HashMap<u32, OpenFileHandler>>>,
     open_dir_handler: Arc<Mutex<HashMap<u32, OpenDirHandler>>>,
     read_only: bool,
-    rewind: bool,
-    time: String,
 }
 
 impl SqliteFs {
@@ -110,8 +108,6 @@ impl SqliteFs {
             open_file_handler,
             open_dir_handler,
             read_only,
-            rewind,
-            time,
         })
     }
     pub fn new_no_time_recording(
@@ -137,8 +133,6 @@ impl SqliteFs {
             open_file_handler,
             open_dir_handler,
             read_only,
-            rewind,
-            time,
         })
     }
     pub fn new_read_only(path: &str) -> Result<SqliteFs, Error> {
@@ -159,8 +153,6 @@ impl SqliteFs {
             open_file_handler,
             open_dir_handler,
             read_only,
-            rewind,
-            time,
         })
     }
 
@@ -177,20 +169,16 @@ impl SqliteFs {
             open_file_handler,
             open_dir_handler,
             read_only,
-            rewind,
-            time,
         })
     }
 }
 
 impl Filesystem for SqliteFs {
     fn init(&mut self, _req: &Request<'_>) -> Result<(), c_int> {
-        if (!self.rewind) {
             match self.db.delete_all_noref_inode() {
                 Ok(n) => n,
                 Err(err) => debug!("{}", err),
             };
-        }
         Ok(())
     }
 
