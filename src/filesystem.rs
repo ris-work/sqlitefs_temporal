@@ -114,29 +114,6 @@ impl SqliteFs {
             time,
         })
     }
-    pub fn new_at_time(path: &str, time: String) -> Result<SqliteFs, Error> {
-        debug! {"Requested rewind to time: {}", time};
-        let time_init = time.clone();
-        let mut db = match Sqlite::new_at_time(Path::new(path), time_init) {
-            Ok(n) => n,
-            Err(err) => return Err(err),
-        };
-        db.init()?;
-        let lookup_count = Arc::new(Mutex::new(HashMap::<u32, u32>::new()));
-        let open_file_handler = Arc::new(Mutex::new(HashMap::<u32, OpenFileHandler>::new()));
-        let open_dir_handler = Arc::new(Mutex::new(HashMap::<u32, OpenDirHandler>::new()));
-        let read_only: bool = true;
-        let rewind: bool = true;
-        Ok(SqliteFs {
-            db,
-            lookup_count,
-            open_file_handler,
-            open_dir_handler,
-            read_only,
-            rewind,
-            time,
-        })
-    }
     pub fn new_no_time_recording(
         path: &str,
         wal_mode: bool,
@@ -234,47 +211,23 @@ impl Filesystem for SqliteFs {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let parent = parent as u32;
         let child;
-        if (!self.rewind) {
-            child = match self.db.lookup(parent, name.to_str().unwrap()) {
-                Ok(n) => match n {
-                    Some(v) => {
-                        reply.entry(&ONE_SEC, &v.get_file_attr(), 0);
-                        debug!("filesystem:lookup, return:{:?}", v.get_file_attr());
-                        v.ino
-                    }
-                    None => {
-                        reply.error(ENOENT);
-                        return;
-                    }
-                },
-                Err(err) => {
+        child = match self.db.lookup(parent, name.to_str().unwrap()) {
+            Ok(n) => match n {
+                Some(v) => {
+                    reply.entry(&ONE_SEC, &v.get_file_attr(), 0);
+                    debug!("filesystem:lookup, return:{:?}", v.get_file_attr());
+                    v.ino
+                }
+                None => {
                     reply.error(ENOENT);
-                    debug!("{}", err);
                     return;
                 }
-            };
-        } else {
-            child = match self
-                .db
-                .lookup_at_time(parent, name.to_str().unwrap(), self.time.clone())
-            {
-                Ok(n) => match n {
-                    Some(v) => {
-                        reply.entry(&ONE_SEC, &v.get_file_attr(), 0);
-                        debug!("filesystem:lookup, return:{:?}", v.get_file_attr());
-                        v.ino
-                    }
-                    None => {
-                        reply.error(ENOENT);
-                        return;
-                    }
-                },
-                Err(err) => {
-                    reply.error(ENOENT);
-                    debug!("{}", err);
-                    return;
-                }
-            };
+            },
+            Err(err) => {
+                reply.error(ENOENT);
+                debug!("{}", err);
+                return;
+            }
         };
         let mut lc_list = self.lookup_count.lock().unwrap();
         let lc = lc_list.entry(child).or_insert(0);
@@ -300,29 +253,16 @@ impl Filesystem for SqliteFs {
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
-        if (!self.rewind) {
-            match self.db.get_inode(ino as u32) {
-                Ok(n) => match n {
-                    Some(v) => {
-                        reply.attr(&ONE_SEC, &v.get_file_attr());
-                        debug!("filesystem:getattr, return:{:?}", v.get_file_attr());
-                    }
-                    None => reply.error(ENOENT),
-                },
-                Err(_err) => reply.error(ENOENT),
-            };
-        } else {
-            match self.db.get_inode_at_time(ino as u32, self.time.clone()) {
-                Ok(n) => match n {
-                    Some(v) => {
-                        reply.attr(&ONE_SEC, &v.get_file_attr());
-                        debug!("filesystem:getattr, return:{:?}", v.get_file_attr());
-                    }
-                    None => reply.error(ENOENT),
-                },
-                Err(_err) => reply.error(ENOENT),
-            };
-        }
+        match self.db.get_inode(ino as u32) {
+            Ok(n) => match n {
+                Some(v) => {
+                    reply.attr(&ONE_SEC, &v.get_file_attr());
+                    debug!("filesystem:getattr, return:{:?}", v.get_file_attr());
+                }
+                None => reply.error(ENOENT),
+            },
+            Err(_err) => reply.error(ENOENT),
+        };
     }
 
     fn setattr(
@@ -399,37 +339,20 @@ impl Filesystem for SqliteFs {
     fn readlink(&mut self, _req: &Request<'_>, ino: u64, reply: ReplyData) {
         let ino = ino as u32;
         let attr;
-        if (!self.rewind) {
-            attr = match self.db.get_inode(ino) {
-                Ok(n) => match n {
-                    Some(attr) => attr,
-                    None => {
-                        reply.error(ENOENT);
-                        return;
-                    }
-                },
-                Err(err) => {
+        attr = match self.db.get_inode(ino) {
+            Ok(n) => match n {
+                Some(attr) => attr,
+                None => {
                     reply.error(ENOENT);
-                    debug!("{}", err);
                     return;
                 }
-            };
-        } else {
-            attr = match self.db.get_inode_at_time(ino, self.time.clone()) {
-                Ok(n) => match n {
-                    Some(attr) => attr,
-                    None => {
-                        reply.error(ENOENT);
-                        return;
-                    }
-                },
-                Err(err) => {
-                    reply.error(ENOENT);
-                    debug!("{}", err);
-                    return;
-                }
-            };
-        }
+            },
+            Err(err) => {
+                reply.error(ENOENT);
+                debug!("{}", err);
+                return;
+            }
+        };
 
         if attr.kind != FileType::Symlink {
             reply.error(EINVAL);
@@ -437,26 +360,13 @@ impl Filesystem for SqliteFs {
         }
         let size = attr.size;
         let mut data;
-        if (!self.rewind) {
-            data = match self.db.get_data(ino as u32, 1, size) {
-                Ok(n) => n,
-                Err(_err) => {
-                    reply.error(ENOENT);
-                    return;
-                }
-            };
-        } else {
-            data = match self
-                .db
-                .get_data_at_time(ino as u32, 1, size, self.time.clone())
-            {
-                Ok(n) => n,
-                Err(_err) => {
-                    reply.error(ENOENT);
-                    return;
-                }
-            };
-        }
+        data = match self.db.get_data(ino as u32, 1, size) {
+            Ok(n) => n,
+            Err(_err) => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
         data.resize(size as usize, 0);
         reply.data(&data);
     }
@@ -825,27 +735,13 @@ impl Filesystem for SqliteFs {
         while size > 0 {
             let b_num = offset / block_size + 1;
             let mut block_data;
-            if (!self.rewind) {
-                block_data = match self.db.get_data(ino as u32, b_num, block_size) {
-                    Ok(n) => n,
-                    Err(_err) => {
-                        reply.error(ENOENT);
-                        return;
-                    }
-                };
-            } else {
-                block_data =
-                    match self
-                        .db
-                        .get_data_at_time(ino as u32, b_num, block_size, self.time.clone())
-                    {
-                        Ok(n) => n,
-                        Err(_err) => {
-                            reply.error(ENOENT);
-                            return;
-                        }
-                    };
-            }
+            block_data = match self.db.get_data(ino as u32, b_num, block_size) {
+                Ok(n) => n,
+                Err(_err) => {
+                    reply.error(ENOENT);
+                    return;
+                }
+            };
             let b_offset = offset % block_size;
             let b_end = if (size + b_offset) / block_size >= 1 {
                 block_size
@@ -983,25 +879,14 @@ impl Filesystem for SqliteFs {
     fn opendir(&mut self, _req: &Request<'_>, ino: u64, _flags: u32, reply: ReplyOpen) {
         let ino = ino as u32;
         let dentries;
-        if (!self.rewind) {
-            dentries = match self.db.get_dentry(ino) {
-                Ok(n) => n,
-                Err(err) => {
-                    reply.error(ENOENT);
-                    debug!("{}", err);
-                    return;
-                }
-            };
-        } else {
-            dentries = match self.db.get_dentry_at_time(ino, self.time.clone()) {
-                Ok(n) => n,
-                Err(err) => {
-                    reply.error(ENOENT);
-                    debug!("{}", err);
-                    return;
-                }
-            };
-        }
+        dentries = match self.db.get_dentry(ino) {
+            Ok(n) => n,
+            Err(err) => {
+                reply.error(ENOENT);
+                debug!("{}", err);
+                return;
+            }
+        };
         let mut handler = self.open_dir_handler.lock().unwrap();
         let handle_list = handler.entry(ino).or_insert_with(OpenDirHandler::new);
         let fh = handle_list.count;
@@ -1193,25 +1078,14 @@ impl Filesystem for SqliteFs {
         let ino = ino as u32;
         let name = name.to_str().unwrap();
         let value;
-        if (!self.rewind) {
-            value = match self.db.get_xattr(ino, name) {
-                Ok(n) => n,
-                Err(err) => {
-                    reply.error(ENODATA);
-                    debug!("{}", err);
-                    return;
-                }
-            };
-        } else {
-            value = match self.db.get_xattr_at_time(ino, name, self.time.clone()) {
-                Ok(n) => n,
-                Err(err) => {
-                    reply.error(ENODATA);
-                    debug!("{}", err);
-                    return;
-                }
-            };
-        }
+        value = match self.db.get_xattr(ino, name) {
+            Ok(n) => n,
+            Err(err) => {
+                reply.error(ENODATA);
+                debug!("{}", err);
+                return;
+            }
+        };
         if size == 0 {
             reply.size(value.len() as u32);
         } else if size < value.len() as u32 {
@@ -1224,25 +1098,14 @@ impl Filesystem for SqliteFs {
     fn listxattr(&mut self, _req: &Request<'_>, ino: u64, size: u32, reply: ReplyXattr) {
         let ino = ino as u32;
         let names;
-        if (!self.rewind) {
-            names = match self.db.list_xattr(ino) {
-                Ok(n) => n,
-                Err(err) => {
-                    reply.error(ENODATA);
-                    debug!("{}", err);
-                    return;
-                }
-            };
-        } else {
-            names = match self.db.list_xattr_at_time(ino, self.time.clone()) {
-                Ok(n) => n,
-                Err(err) => {
-                    reply.error(ENODATA);
-                    debug!("{}", err);
-                    return;
-                }
-            };
-        }
+        names = match self.db.list_xattr(ino) {
+            Ok(n) => n,
+            Err(err) => {
+                reply.error(ENODATA);
+                debug!("{}", err);
+                return;
+            }
+        };
         let mut data: Vec<u8> = Vec::new();
         for v in names {
             data.extend(v.bytes());
