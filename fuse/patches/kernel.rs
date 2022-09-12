@@ -51,9 +51,9 @@ pub struct fuse_attr {
     #[cfg(target_os = "macos")]
     pub flags: u32,                                     // see chflags(2)
     #[cfg(target_os = "netbsd")]
-    pub blksize: u32,                                     // see chflags(2)
+    pub blksize: u32,                                     // see libperfuse/fuse.h
     #[cfg(target_os = "netbsd")]
-    pub padding: u32,                                     // see chflags(2)
+    pub padding: u32,                                     
 }
 
 #[repr(C)]
@@ -239,8 +239,8 @@ pub struct fuse_entry_out {
 pub struct fuse_entry_out {
     pub nodeid: u64,
     pub generation: u64,
-    pub entry_valid: i64,
-    pub attr_valid: i64,
+    pub entry_valid: u64,
+    pub attr_valid: u64,
     pub entry_valid_nsec: u32,
     pub attr_valid_nsec: u32,
     pub attr: fuse_attr,
