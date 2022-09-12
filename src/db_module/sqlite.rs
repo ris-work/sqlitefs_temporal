@@ -318,6 +318,7 @@ impl Sqlite {
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
+        conn.execute("PRAGMA main.auto_vacuum=FULL", [])?;
         if (wal_mode) {
             conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
         }
@@ -335,6 +336,7 @@ impl Sqlite {
         // enable foreign key. Sqlite ignores foreign key by default.
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("PRAGMA cache_size=-16384", [])?;
+        conn.execute("PRAGMA main.auto_vacuum=FULL", [])?;
         if (wal_mode) {
             conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
         }
