@@ -29,12 +29,6 @@ fn main() {
         .help("Sqlite database file path. If not set, open database in memory. Rewind is not supported if an in-memory database is used.")
         .index(2);
 
-    let db_time_arg = Arg::with_name("at_time")
-        .short('t')
-        .long("time")
-        .help("Sqlite database time to rewind to. If specified, implies read-only.")
-        .takes_value(true);
-
     let db_syn_mode_arg = Arg::with_name("syn_mode")
         .short('s')
         .long("syn_mode")
@@ -67,7 +61,6 @@ fn main() {
         .arg(mount_option_arg)
         .arg(mount_point_arg)
         .arg(db_path_arg)
-        .arg(db_time_arg)
         .arg(db_no_time_recording_arg)
         .arg(db_read_only_arg)
         .arg(db_rollback_mode_arg)
@@ -101,7 +94,6 @@ fn main() {
         .value_of("mount_point")
         .expect("Mount point path is missing.");
     let db_path = matches.value_of("db_path");
-    let db_time = matches.value_of("at_time");
     let db_syn_mode_requested = matches.value_of("syn_mode");
     let db_syn_mode;
 
@@ -122,25 +114,21 @@ fn main() {
         .collect::<Vec<&OsStr>>();
     let fs: SqliteFs;
     debug!("read-only: {}", db_read_only);
-    if (db_time.is_some()) {
-        debug!("db_time: {}", db_time.unwrap());
-    }
     match db_path {
-        Some(path) => match db_time {
-            Some(time) => {
-                debug!("Requested rewind at: {:?}", time);
-                fs = match SqliteFs::new_at_time(path, time.to_string()) {
+        Some(path) => {
+            debug!("Rewind is not requested; proceeding as-is.");
+            if (db_read_only) {
+                fs = match SqliteFs::new_read_only(path) {
                     Ok(n) => n,
                     Err(err) => {
                         println!("{:?}", err);
                         return;
                     }
                 };
-            }
-            None => {
-                debug!("Rewind is not requested; proceeding as-is.");
-                if (db_read_only) {
-                    fs = match SqliteFs::new_read_only(path) {
+            } else {
+                if (db_no_time) {
+                    fs = match SqliteFs::new_no_time_recording(path, !db_rollback_mode, db_syn_mode)
+                    {
                         Ok(n) => n,
                         Err(err) => {
                             println!("{:?}", err);
@@ -148,30 +136,16 @@ fn main() {
                         }
                     };
                 } else {
-                    if (db_no_time) {
-                        fs = match SqliteFs::new_no_time_recording(
-                            path,
-                            !db_rollback_mode,
-                            db_syn_mode,
-                        ) {
-                            Ok(n) => n,
-                            Err(err) => {
-                                println!("{:?}", err);
-                                return;
-                            }
-                        };
-                    } else {
-                        fs = match SqliteFs::new(path, !db_rollback_mode, db_syn_mode) {
-                            Ok(n) => n,
-                            Err(err) => {
-                                println!("{:?}", err);
-                                return;
-                            }
-                        };
-                    }
+                    fs = match SqliteFs::new(path, !db_rollback_mode, db_syn_mode) {
+                        Ok(n) => n,
+                        Err(err) => {
+                            println!("{:?}", err);
+                            return;
+                        }
+                    };
                 }
             }
-        },
+        }
         None => {
             let mut db = match Sqlite::new_in_memory() {
                 Ok(n) => n,
