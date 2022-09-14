@@ -1,1278 +1,676 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<base href="https://sqlite.org/src/doc/tip/ext/misc/sqlar.c" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; script-src 'self' 'nonce-11981b23fb5f2bd640d020650c3b7d4715c30a00ca321dfa'; style-src 'self' 'unsafe-inline'; img-src * data:" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SQLite: Documentation</title>
-<link rel="alternate" type="application/rss+xml" title="RSS Feed"  href="/src/timeline.rss" />
-<link rel="stylesheet" href="/src/style.css?id=666dd6d0" type="text/css" />
-</head>
-<body class="doc rpage-doc cpage-doc">
-<div class="header">
-<div class="title">
-<img id='sqlitelogo' src='/src/logo' style='height:50px;'> 
-<span style='vertical-align:super;'><span id='titlesep'>/</span> Documentation</span>
-</div>
-<div class="status"><a href='/src/login'>Login</a>
-</div>
-</div>
-<div class="mainmenu">
-<a id='hbbtn' href='/src/sitemap' aria-label='Site Map'>&#9776;</a><a href='https://sqlite.org/' class=''>Home</a>
-<a href='/src/timeline' class=''>Timeline</a>
-<a href='https://sqlite.org/forum/forum' class='desktoponly'>Forum</a>
-</div>
-<div id='hbdrop'></div>
-<div class="content"><span id="debugMsg"></span>
-<blockquote><pre>
 /*
-** 2017-12-17
+** Copyright (c) 2014 D. Richard Hipp
 **
-** The author disclaims copyright to this source code.  In place of
-** a legal notice, here is a blessing:
+** This program is free software; you can redistribute it and/or
+** modify it under the terms of the Simplified BSD License (also
+** known as the "2-Clause License" or "FreeBSD License".)
+
+** This program is distributed in the hope that it will be useful,
+** but without any warranty; without even the implied warranty of
+** merchantability or fitness for a particular purpose.
 **
-**    May you do good and not evil.
-**    May you find forgiveness for yourself and forgive others.
-**    May you share freely, never taking more than you give.
-**
-******************************************************************************
-**
-** Utility functions sqlar_compress() and sqlar_uncompress(). Useful
-** for working with sqlar archives and used by the shell tool&#39;s built-in
-** sqlar support.
+** Author contact information:
+**   drh@sqlite.org
 */
-#include &quot;sqlite3ext.h&quot;
-SQLITE_EXTENSION_INIT1
-#include &lt;zlib.h&gt;
-#include &lt;assert.h&gt;
+#include "sqlite3.h"
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <zlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <string.h>
+#include <assert.h>
+#include <ctype.h>
+
+/* Maximum length of a pass-phrase */
+#define MX_PASSPHRASE  120
 
 /*
-** Implementation of the &quot;sqlar_compress(X)&quot; SQL function.
-**
-** If the type of X is SQLITE_BLOB, and compressing that blob using
-** zlib utility function compress() yields a smaller blob, return the
-** compressed blob. Otherwise, return a copy of X.
-**
-** SQLar uses the &quot;zlib format&quot; for compressed content.  The zlib format
-** contains a two-byte identification header and a four-byte checksum at
-** the end.  This is different from ZIP which uses the raw deflate format.
-**
-** Future enhancements to SQLar might add support for new compression formats.
-** If so, those new formats will be identified by alternative headers in the
-** compressed data.
+** Show a help message and quit.
 */
-static void sqlarCompressFunc(
+static void showHelp(const char *argv0){
+  fprintf(stderr, "Usage: %s [options] archive [files...]\n", argv0);
+  fprintf(stderr,
+     "Options:\n"
+     "   -d      Delete files from the archive\n"
+     "   -e      Prompt for passphrase.  -ee to scramble the prompt\n"
+     "   -l      List files in archive\n"
+     "   -n      Do not compress files\n"
+     "   -x      Extract files from archive\n"
+     "   -v      Verbose output\n"
+  );
+  exit(1);
+}
+
+/*
+** The database schema. Each file, directory or symlink in an archive
+** is represented by a single row in this table. 
+**
+** name:  Path to file-system entry (text).
+** mode:  Value of stat.st_mode returned by stat() call (integer).
+** mtime: Value of stat.st_mtime returned by stat() call (integer).
+** sz:    Size of file in bytes. Always 0 for a directory. -1 for symlink.
+** data:  Blob containing file contents. NULL for a directory. Text value
+**        containing linked path for a symlink.
+*/
+static const char zSchema[] =
+  "CREATE TABLE IF NOT EXISTS sqlar(\n"
+  "  name TEXT PRIMARY KEY,\n"
+  "  mode INT,\n"
+  "  mtime INT,\n"
+  "  sz INT,\n"
+  "  data BLOB\n"
+  ");"
+;
+
+/*
+** Prepared statement that needs finalizing before sqlite3_close().
+*/
+static sqlite3_stmt *pStmt = 0;
+
+/*
+** Open database connection
+*/
+static sqlite3 *db = 0;
+
+/*
+** Close the database
+*/
+static void db_close(int commitFlag){
+  if( pStmt ){
+    sqlite3_finalize(pStmt);
+    pStmt = 0;
+  }
+  if( db ){
+    if( commitFlag ){
+      sqlite3_exec(db, "COMMIT", 0, 0, 0);
+    }else{
+      sqlite3_exec(db, "ROLLBACK", 0, 0, 0);
+    }
+    sqlite3_close(db);
+    db = 0;
+  }
+}
+
+
+/*
+** Panic message
+*/
+static void errorMsg(const char *zFormat, ...){
+  va_list ap;
+  va_start(ap, zFormat);
+  vfprintf(stderr, zFormat, ap);
+  va_end(ap);
+  db_close(0);
+  exit(1);
+}
+
+/*
+** Scramble substitution matrix:
+*/
+static char aSubst[256];
+
+/*
+** Descramble the password
+*/
+static void descramble(char *z){
+  int i;
+  for(i=0; z[i]; i++) z[i] = aSubst[(unsigned char)z[i]];
+}
+
+/* Print a string in 5-letter groups */
+static void printFive(const unsigned char *z){
+  int i;
+  for(i=0; z[i]; i++){
+    if( i>0 && (i%5)==0 ) putchar(' ');
+    putchar(z[i]);
+  }
+  putchar('\n');
+}
+
+/* Return a pseudo-random integer between 0 and N-1 */
+static int randint(int N){
+  unsigned char x;
+  assert( N<256 );
+  sqlite3_randomness(1, &x);
+  return x % N;
+}
+
+/*
+** Generate and print a random scrambling of letters a through z (omitting x)
+** and set up the aSubst[] matrix to descramble.
+*/
+static void generateScrambleCode(void){
+  unsigned char zOrig[30];
+  unsigned char zA[30];
+  unsigned char zB[30];
+  int nA = 25;
+  int nB = 0;
+  int i;
+  memcpy(zOrig, "abcdefghijklmnopqrstuvwyz", nA+1);
+  memcpy(zA, zOrig, nA+1);
+  assert( nA==(int)strlen((char*)zA) );
+  for(i=0; i<sizeof(aSubst); i++) aSubst[i] = i;
+  printFive(zA);
+  while( nA>0 ){
+    int x = randint(nA);
+    zB[nB++] = zA[x];
+    zA[x] = zA[--nA];
+  }
+  assert( nB==25 );
+  zB[nB] = 0;
+  printFive(zB);
+  for(i=0; i<nB; i++) aSubst[zB[i]] = zOrig[i];
+}
+
+/*
+** Do a single prompt for a passphrase.  Store the results in the blob.
+**
+** If the FOSSIL_PWREADER environment variable is set, then it will
+** be the name of a program that prompts the user for their password/
+** passphrase in a secure manner.  The program should take one or more
+** arguments which are the prompts and should output the acquired
+** passphrase as a single line on stdout.  This function will read the
+** output using popen().
+**
+** If FOSSIL_PWREADER is not set, or if it is not the name of an
+** executable, then use the C-library getpass() routine.
+**
+** The return value is a pointer to a static buffer that is overwritten
+** on subsequent calls to this same routine.
+*/
+static void prompt_for_passphrase(
+  const char *zPrompt,    /* Passphrase prompt */
+  int doScramble,         /* Scramble the input if true */
+  char *zPassphrase       /* Write result here */
+){
+  char *z;
+  int i;
+  if( doScramble ){
+    generateScrambleCode();
+    z = getpass(zPrompt);
+    if( z ) descramble(z);
+    printf("\033[3A\033[J");  /* Erase previous three lines */
+    fflush(stdout);
+  }else{
+    z = getpass(zPrompt);
+  }
+  while( isspace(z[0]) ) z++;
+  for(i=0; i<MX_PASSPHRASE-1; i++){
+    zPassphrase[i] = z[i];
+  }
+  while( i>0 && isspace(z[i-1]) ){ i--; }
+  zPassphrase[i] = 0;
+}
+
+/*
+** List of command-line arguments
+*/
+typedef struct NameList NameList;
+struct NameList {
+  const char **azName;   /* List of names */
+  int nName;             /* Number of names on the list */
+};
+
+/*
+** Inplementation of SQL function "name_on_list(X)".  Return
+** true if X is on the list of GLOB patterns given on the command-line.
+*/
+static void name_on_list(
   sqlite3_context *context,
   int argc,
   sqlite3_value **argv
 ){
-  assert( argc==1 );
-  if( sqlite3_value_type(argv[0])==SQLITE_BLOB ){
-    const Bytef *pData = sqlite3_value_blob(argv[0]);
-    uLong nData = sqlite3_value_bytes(argv[0]);
-    uLongf nOut = compressBound(nData);
-    Bytef *pOut;
+  NameList *pList = (NameList*)sqlite3_user_data(context);
+  int i;
+  int rc = 0;
+  const char *z = (const char*)sqlite3_value_text(argv[0]);
+  if( z!=0 ){
+    for(i=0; i<pList->nName; i++){
+      if( sqlite3_strglob(pList->azName[i], z)==0 ){
+        rc = 1;
+        break;
+      }
+    }
+  }
+  sqlite3_result_int(context, rc);
+}
 
-    pOut = (Bytef*)sqlite3_malloc(nOut);
-    if( pOut==0 ){
-      sqlite3_result_error_nomem(context);
-      return;
+/*
+** SQL functions that always true.  This is used in place of
+** name_on_list() when no command-line arguments are given.
+*/
+static void alwaysTrue(sqlite3_context *ctx, int n, sqlite3_value **v){
+  sqlite3_result_int(ctx, 1);
+}
+
+
+/*
+** Open the database.
+*/
+static void db_open(
+  const char *zArchive,
+  int writeFlag,
+  int seeFlag,
+  const char **azFiles,
+  int nFiles
+){
+  int rc;
+  int fg;
+  NameList *x = 0;
+  if( writeFlag ){
+    fg = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+  }else{
+    fg = SQLITE_OPEN_READONLY;
+  }
+  rc = sqlite3_open_v2(zArchive, &db, fg, 0);
+  if( rc ) errorMsg("Cannot open archive [%s]: %s\n", zArchive,
+                    sqlite3_errmsg(db));
+  if( azFiles!=0 && nFiles>0 ){
+    x = sqlite3_malloc( sizeof(NameList) );
+    if( x==0 ) errorMsg("Out of memory");
+    x->azName = azFiles;
+    x->nName = nFiles;
+    sqlite3_create_function(db, "name_on_list", 1, SQLITE_UTF8,
+                           (char*)x, name_on_list, 0, 0);
+  }else{
+    sqlite3_create_function(db, "name_on_list", 1, SQLITE_UTF8,
+                            0, alwaysTrue, 0, 0);
+  }
+  if( seeFlag ){
+    char zPassPhrase[MX_PASSPHRASE+1];
+#ifndef SQLITE_HAS_CODEC
+    printf("WARNING:  The passphrase is a no-op because this build of\n"
+           "sqlar is compiled without encryption capabilities.\n");
+#endif
+    memset(zPassPhrase, 0, sizeof(zPassPhrase));
+    prompt_for_passphrase("passphrase: ", seeFlag>1, zPassPhrase);
+#ifdef SQLITE_HAS_CODEC
+    sqlite3_key_v2(db, "main", zPassPhrase, -1);
+#endif
+  }
+  sqlite3_exec(db, "BEGIN", 0, 0, 0);
+  sqlite3_exec(db, zSchema, 0, 0, 0);
+  rc = sqlite3_exec(db, "SELECT 1 FROM sqlar LIMIT 1", 0, 0, 0);
+  if( rc!=SQLITE_OK ){
+    fprintf(stderr, "File [%s] is not an SQLite archive\n", zArchive);
+    exit(1);
+  }
+}
+
+/*
+** Prepare the pStmt statement.
+*/
+static void db_prepare(const char *zSql){
+  int rc;
+  sqlite3_finalize(pStmt);
+  rc = sqlite3_prepare_v2(db, zSql, -1, &pStmt, 0);
+  if( rc ){
+    errorMsg("Error: %s\nwhile preparing: %s\n",
+             sqlite3_errmsg(db), zSql);
+  }
+}
+
+/*
+** Read a file from disk into memory obtained from sqlite3_malloc().
+** Compress the file as it is read in if doing so reduces the file
+** size and if the noCompress flag is false.
+**
+** Return the original size and the compressed size of the file in
+** *pSizeOrig and *pSizeCompr, respectively.  If these two values are
+** equal, that means the file was not compressed.
+*/
+static char *read_file(
+  const char *zFilename,    /* Name of file to read */
+  int *pSizeOrig,           /* Write original file size here */
+  int *pSizeCompr,          /* Write compressed file size here */
+  int noCompress            /* Do not compress if true */
+){
+  FILE *in;
+  char *zIn;
+  long int nIn;
+  char *zCompr;
+  unsigned long int nCompr;
+  int rc;
+
+  in = fopen(zFilename, "rb");
+  if( in==0 ) errorMsg("cannot open \"%s\" for reading\n", zFilename);
+  fseek(in, 0, SEEK_END);
+  nIn = ftell(in);
+  rewind(in);
+  zIn = sqlite3_malloc( nIn+1 );
+  if( zIn==0 ) errorMsg("cannot malloc for %d bytes\n", nIn+1);
+  if( nIn>0 && fread(zIn, nIn, 1, in)!=1 ){
+    errorMsg("unable to read %d bytes of file %s\n", nIn, zFilename);
+  }
+  fclose(in);
+  if( noCompress ){
+    *pSizeOrig = *pSizeCompr = nIn;
+    return zIn;
+  }
+  nCompr = 13 + nIn + (nIn+999)/1000;
+  zCompr = sqlite3_malloc( nCompr+1 );
+  if( zCompr==0 ) errorMsg("cannot malloc for %d bytes\n", nCompr+1);
+  rc = compress((Bytef*)zCompr, &nCompr, (const Bytef*)zIn, nIn);
+  if( rc!=Z_OK ) errorMsg("Cannot compress %s\n", zFilename);
+  if( nIn>nCompr ){
+    sqlite3_free(zIn);
+    *pSizeOrig = nIn;
+    *pSizeCompr = (int)nCompr;
+    return zCompr;
+  }else{
+    sqlite3_free(zCompr);
+    *pSizeOrig = *pSizeCompr = nIn;
+    return zIn;
+  }
+}
+
+/*
+** Make sure the parent directory for zName exists.  Create it if it does
+** not exist.
+*/
+static void make_parent_directory(const char *zName){
+  char *zParent;
+  int i, j, rc;
+  for(i=j=0; zName[i]; i++) if( zName[i]=='/' ) j = i;
+  if( j>0 ){
+    zParent = sqlite3_mprintf("%.*s", j, zName);
+    if( zParent==0 ) errorMsg("mprintf failed\n");
+    while( j>0 && zParent[j]=='/' ) j--;
+    zParent[j] = 0;
+    if( j>0 && access(zParent,F_OK)!=0 ){
+      make_parent_directory(zParent);
+      rc = mkdir(zParent, 0777);
+      if( rc ) errorMsg("cannot create directory: %s\n", zParent);
+    }
+    sqlite3_free(zParent);
+  }
+}
+
+/*
+** Write a file or a directory.
+**
+** Create any missing directories leading up to the given file or directory.
+** Also set the access mode and the modification time.
+**
+** If sz>nCompr that means that the content is compressed and needs to be
+** decompressed before writing.
+*/
+static void write_file(
+  const char *zFilename,   /* Store content in this file */
+  int iMode,               /* The unix-style access mode */
+  sqlite3_int64 mtime,     /* Modification time */
+  int sz,                  /* Size of file as stored on disk */
+  const char *pCompr,      /* Content (usually compressed) */
+  int nCompr               /* Size of content (prior to decompression) */
+){
+  char *pOut;
+  unsigned long int nOut;
+  int rc;
+  FILE *out;
+  make_parent_directory(zFilename);
+  if( pCompr==0 ){
+    rc = mkdir(zFilename, iMode);
+    if( rc ) errorMsg("cannot make directory: %s\n", zFilename);
+    return;
+  }
+  if( sz<0 ){
+    /* This is a symlink. */
+    if( symlink(pCompr, zFilename)<0 ){
+      errorMsg("failed to create symlink: %s -> %s\n", zFilename, pCompr);
+    }
+  }else{
+    out = fopen(zFilename, "wb");
+    if( out==0 ) errorMsg("cannot open for writing: %s\n", zFilename);
+    if( sz==nCompr ){
+      if( sz>0 && fwrite(pCompr, sz, 1, out)!=1 ){
+        errorMsg("failed to write: %s\n", zFilename);
+      }
     }else{
-      if( Z_OK!=compress(pOut, &amp;nOut, pData, nData) ){
-        sqlite3_result_error(context, &quot;error in compress()&quot;, -1);
-      }else if( nOut&lt;nData ){
-        sqlite3_result_blob(context, pOut, nOut, SQLITE_TRANSIENT);
-      }else{
-        sqlite3_result_value(context, argv[0]);
+      pOut = sqlite3_malloc( sz+1 );
+      if( pOut==0 ) errorMsg("cannot allocate %d bytes\n", sz+1);
+      nOut = sz;
+      rc = uncompress((Bytef*)pOut, &nOut, (const Bytef*)pCompr, nCompr);
+      if( rc!=Z_OK ) errorMsg("uncompress failed for %s\n", zFilename);
+      if( nOut>0 && fwrite(pOut, nOut, 1, out)!=1 ){
+        errorMsg("failed to write: %s\n", zFilename);
       }
       sqlite3_free(pOut);
     }
-  }else{
-    sqlite3_result_value(context, argv[0]);
+    fclose(out);
+
+    rc = chmod(zFilename, iMode&0777);
+    if( rc ) errorMsg("cannot change mode to %03o: %s\n", iMode&0777,zFilename);
   }
 }
 
 /*
-** Implementation of the &quot;sqlar_uncompress(X,SZ)&quot; SQL function
-**
-** Parameter SZ is interpreted as an integer. If it is less than or
-** equal to zero, then this function returns a copy of X. Or, if
-** SZ is equal to the size of X when interpreted as a blob, also
-** return a copy of X. Otherwise, decompress blob X using zlib
-** utility function uncompress() and return the results (another
-** blob).
+** Error out if there are any issues with the given filename
 */
-static void sqlarUncompressFunc(
-  sqlite3_context *context,
-  int argc,
-  sqlite3_value **argv
+static void check_filename(const char *z){
+  if( strncmp(z, "../", 3)==0 || sqlite3_strglob("*/../*", z)==0 ){
+    errorMsg("Filename with '..' in its path: %s\n", z);
+  }
+  if( sqlite3_strglob("*\\*", z)==0 ){
+    errorMsg("Filename with '\\' in its name: %s\n", z);
+  }
+}
+
+/*
+** File zSymlink is a symbolic link. Figure out the path that the link 
+** points to and bind it (as text) to parameter iVar of statement pStmt.
+*/
+static void bind_symlink_path(
+  sqlite3_stmt *pStmt,            /* Statement to bind to */
+  int iVar,                       /* Variable within pStmt to bind to */
+  const char *zSymlink,           /* Path to symlink */
+  int verboseFlag                 /* If true, show file added */
 ){
-  uLong nData;
-  uLongf sz;
+  char buf[4096];
+  int n = readlink(zSymlink, buf, sizeof(buf));
+  if( n<0 ){
+    errorMsg("readlink(%s) failed\n", zSymlink);
+  }
+  if( n>sizeof(buf) ){
+    errorMsg("symlinked path is too long (max %d bytes)\n", sizeof(buf));
+  }
 
-  assert( argc==2 );
-  sz = sqlite3_value_int(argv[1]);
+  sqlite3_bind_text(pStmt, iVar, buf, n, SQLITE_TRANSIENT);
+  if( verboseFlag ) printf("  added: %s -> %.*s\n", zSymlink, n, buf);
+}
 
-  if( sz&lt;=0 || sz==(nData = sqlite3_value_bytes(argv[0])) ){
-    sqlite3_result_value(context, argv[0]);
-  }else{
-    const Bytef *pData= sqlite3_value_blob(argv[0]);
-    Bytef *pOut = sqlite3_malloc(sz);
-    if( Z_OK!=uncompress(pOut, &amp;sz, pData, nData) ){
-      sqlite3_result_error(context, &quot;error in uncompress()&quot;, -1);
-    }else{
-      sqlite3_result_blob(context, pOut, sz, SQLITE_TRANSIENT);
+/*
+** Add a file to the database.
+*/
+static void add_file(
+  const char *zFilename,     /* Name of file to add */
+  int verboseFlag,           /* If true, show each file added */
+  int noCompress             /* If true, always omit compression */
+){
+  int rc;
+  struct stat x;
+  int szOrig;
+  int szCompr;
+  const char *zName;
+
+  check_filename(zFilename);
+  rc = lstat(zFilename, &x);
+  if( rc ) errorMsg("no such file or directory: %s\n", zFilename);
+  if( x.st_size>1000000000 ){
+    errorMsg("file too big: %s\n", zFilename);
+  }
+  if( pStmt==0 ){
+    db_prepare("REPLACE INTO sqlar(name,mode,mtime,sz,data)"
+               " VALUES(?1,?2,?3,?4,?5)");
+  }
+  zName = zFilename;
+  while( zName[0]=='/' ) zName++;
+  sqlite3_bind_text(pStmt, 1, zName, -1, SQLITE_STATIC);
+  sqlite3_bind_int(pStmt, 2, x.st_mode);
+  sqlite3_bind_int64(pStmt, 3, x.st_mtime);
+  if( S_ISLNK(x.st_mode) ){
+    sqlite3_bind_int(pStmt, 4, -1);
+    bind_symlink_path(pStmt, 5, zFilename, verboseFlag);
+  }else if( S_ISREG(x.st_mode) ){
+    char *zContent = read_file(zFilename, &szOrig, &szCompr, noCompress);
+    sqlite3_bind_int(pStmt, 4, szOrig);
+    sqlite3_bind_blob(pStmt, 5, zContent, szCompr, sqlite3_free);
+    if( verboseFlag ){
+      if( szCompr<szOrig ){
+        int pct = szOrig ? (100*(sqlite3_int64)szCompr)/szOrig : 0;
+        printf("  added: %s (deflate %d%%)\n", zFilename, 100-pct);
+      }else{
+        printf("  added: %s\n", zFilename);
+      }
     }
-    sqlite3_free(pOut);
+  }else{
+    sqlite3_bind_int(pStmt, 4, 0);
+    sqlite3_bind_null(pStmt, 5);
+    if( verboseFlag ) printf("  added: %s\n", zFilename);
+  }
+  rc = sqlite3_step(pStmt);
+  if( rc!=SQLITE_DONE ){
+    errorMsg("Insert failed for %s: %s\n", zFilename, sqlite3_errmsg(db));
+  }
+  sqlite3_reset(pStmt);
+  if( S_ISDIR(x.st_mode) ){
+    DIR *d;
+    struct dirent *pEntry;
+    char *zSubpath;
+    d = opendir(zFilename);
+    if( d ){
+      while( (pEntry = readdir(d))!=0 ){
+        if( strcmp(pEntry->d_name,".")==0 || strcmp(pEntry->d_name,"..")==0 ){
+          continue;
+        }
+        zSubpath = sqlite3_mprintf("%s/%s", zFilename, pEntry->d_name);
+        add_file(zSubpath, verboseFlag, noCompress);
+        sqlite3_free(zSubpath);
+      }
+      closedir(d);
+    }
   }
 }
 
+int main(int argc, char **argv){
+  const char *zArchive = 0;
+  const char **azFiles = 0;
+  int nFiles = 0;
+  int listFlag = 0;
+  int extractFlag = 0;
+  int verboseFlag = 0;
+  int noCompress = 0;
+  int seeFlag = 0;
+  int deleteFlag = 0;
+  int i, j;
 
-#ifdef _WIN32
-__declspec(dllexport)
-#endif
-int sqlite3_sqlar_init(
-  sqlite3 *db, 
-  char **pzErrMsg, 
-  const sqlite3_api_routines *pApi
-){
-  int rc = SQLITE_OK;
-  SQLITE_EXTENSION_INIT2(pApi);
-  (void)pzErrMsg;  /* Unused parameter */
-  rc = sqlite3_create_function(db, &quot;sqlar_compress&quot;, 1, 
-                               SQLITE_UTF8|SQLITE_INNOCUOUS, 0,
-                               sqlarCompressFunc, 0, 0);
-  if( rc==SQLITE_OK ){
-    rc = sqlite3_create_function(db, &quot;sqlar_uncompress&quot;, 2,
-                                 SQLITE_UTF8|SQLITE_INNOCUOUS, 0,
-                                 sqlarUncompressFunc, 0, 0);
+  if( sqlite3_strglob("*/unsqlar", argv[0])==0 ){
+    extractFlag = 1;
   }
-  return rc;
+  for(i=1; i<argc; i++){
+    if( argv[i][0]=='-' ){
+      for(j=1; argv[i][j]; j++){
+        switch( argv[i][j] ){
+          case 'l':   listFlag = 1;    break;
+          case 'n':   noCompress = 1;  break;
+          case 'v':   verboseFlag = 1; break;
+          case 'x':   extractFlag = 1; break;
+          case 'e':   seeFlag++;       break;
+          case 'd':   deleteFlag = 1;  break;
+          case '-':   break;
+          default:    showHelp(argv[0]);
+        }
+      }
+    }else if( zArchive==0 ){
+      zArchive = argv[i];
+    }else{
+      azFiles = (const char**)&argv[i];
+      nFiles = argc - i;
+      break;
+    }
+  }
+  if( zArchive==0 ) showHelp(argv[0]);
+  if( listFlag || deleteFlag ){
+    if( deleteFlag && nFiles==0 ){
+      errorMsg("Specify one or more files to delete on the command-line");
+    }
+    db_open(zArchive, deleteFlag, seeFlag, azFiles, nFiles);
+    if( verboseFlag ){
+      db_prepare(
+          "SELECT name, sz, length(data), mode, datetime(mtime,'unixepoch')"
+          " FROM sqlar WHERE name_on_list(name) ORDER BY name"
+      );
+      while( sqlite3_step(pStmt)==SQLITE_ROW ){
+        if( deleteFlag ) printf("DELETE ");
+        printf("%10d %10d %03o %s %s\n", 
+               sqlite3_column_int(pStmt, 1),
+               sqlite3_column_int(pStmt, 2),
+               sqlite3_column_int(pStmt, 3)&0777,
+               sqlite3_column_text(pStmt, 4),
+               sqlite3_column_text(pStmt, 0));
+      }
+    }else{
+      db_prepare(
+          "SELECT name FROM sqlar WHERE name_on_list(name) ORDER BY name"
+      );
+      while( sqlite3_step(pStmt)==SQLITE_ROW ){
+        if( deleteFlag ) printf("DELETE ");
+        printf("%s\n", sqlite3_column_text(pStmt,0));
+      }
+    }
+    if( deleteFlag ){
+      sqlite3_exec(db, "DELETE FROM sqlar WHERE name_on_list(name)", 0, 0, 0);
+    }
+    db_close(1);
+  }else if( extractFlag ){
+    const char *zSql;
+    db_open(zArchive, 0, seeFlag, azFiles, nFiles);
+    zSql = "SELECT name, mode, mtime, sz, data FROM sqlar"
+           " WHERE name_on_list(name)";
+    db_prepare(zSql);
+    while( sqlite3_step(pStmt)==SQLITE_ROW ){
+      int sz = sqlite3_column_int(pStmt, 3);     /* Size of file on disk */
+      const char *pData;                         /* Data for this file */
+      const char *zFN = (const char*)sqlite3_column_text(pStmt, 0);
+      check_filename(zFN);
+      if( zFN[0]=='/' ){
+        errorMsg("absolute pathname: %s\n", zFN);
+      }
+      if( sqlite3_column_type(pStmt,4)==SQLITE_BLOB && access(zFN, F_OK)==0 ){
+        errorMsg("file already exists: %s\n", zFN);
+      }
+      if( verboseFlag ) printf("%s\n", zFN);
+      if( sz<0 ){
+        /* symlink */
+        pData = (const char*)sqlite3_column_text(pStmt, 4);
+      }else{
+        pData = (const char*)sqlite3_column_blob(pStmt,4);
+        if( pData==0 && sqlite3_column_type(pStmt, 4)!=SQLITE_NULL ){
+          /* If the file is zero bytes in size, then column "data" will
+          ** contain a zero-byte blob value. In this case, column_blob()
+          ** returns NULL, which confuses the write_file() call into
+          ** thinking this is a directory, not a zero-byte file.  */
+          pData = "";
+        }
+      }
+      write_file(zFN, sqlite3_column_int(pStmt,1),
+                 sqlite3_column_int64(pStmt,2),
+                 sz, pData,
+                 sqlite3_column_bytes(pStmt,4));
+    }
+    db_close(1);
+  }else{
+    if( azFiles==0 ){
+      errorMsg("Specify one or more files to add on the command-line");
+    }
+    db_open(zArchive, 1, seeFlag, 0, 0);
+    for(i=0; i<nFiles; i++){
+      add_file(azFiles[i], verboseFlag, noCompress);
+    }
+    db_close(1);
+  }
+  return 0;
 }
-
-</pre></blockquote>
-<script nonce='11981b23fb5f2bd640d020650c3b7d4715c30a00ca321dfa'>/* builtin.c:620 */
-(function(){
-if(window.NodeList && !NodeList.prototype.forEach){NodeList.prototype.forEach = Array.prototype.forEach;}
-if(!window.fossil) window.fossil={};
-window.fossil.version = "2.20 [e9d7cf3e92] 2022-09-13 20:11:04 UTC";
-window.fossil.rootPath = "/src"+'/';
-window.fossil.config = {projectName: "SQLite",
-shortProjectName: "",
-projectCode: "2ab58778c2967968b94284e989e43dc11791f548",
-/* Length of UUID hashes for display purposes. */hashDigits: 8, hashDigitsUrl: 16,
-diffContextLines: 5,
-editStateMarkers: {/*Symbolic markers to denote certain edit states.*/isNew:'[+]', isModified:'[*]', isDeleted:'[-]'},
-confirmerButtonTicks: 3 /*default fossil.confirmer tick count.*/,
-skin:{isDark: false/*true if the current skin has the 'white-foreground' detail*/}
-};
-window.fossil.user = {name: "guest",isAdmin: false};
-if(fossil.config.skin.isDark) document.body.classList.add('fossil-dark-style');
-window.fossil.page = {name:"doc/tip/ext/misc/sqlar.c"};
-})();
-</script>
-<script nonce='11981b23fb5f2bd640d020650c3b7d4715c30a00ca321dfa'>/* doc.c:430 */
-window.addEventListener('load', ()=>window.fossil.pikchr.addSrcView(), false);
-</script>
-</div>
-<div class="footer">
-This page was generated in about
-0.022s by
-Fossil 2.20 [e9d7cf3e92] 2022-09-13 20:11:04
-</div>
-<script nonce="11981b23fb5f2bd640d020650c3b7d4715c30a00ca321dfa">
-(function() {
-var hbButton = document.getElementById("hbbtn");
-if (!hbButton) return;
-if (!document.addEventListener) {
-hbButton.href = "/src/sitemap";
-return;
-}
-var panel = document.getElementById("hbdrop");
-if (!panel) return;
-if (!panel.style) return;
-var panelBorder = panel.style.border;
-var panelInitialized = false;
-var panelResetBorderTimerID = 0;
-var animate = panel.style.transition !== null && (typeof(panel.style.transition) == "string");
-var animMS = panel.getAttribute("data-anim-ms");
-if (animMS) {
-animMS = parseInt(animMS);
-if (isNaN(animMS) || animMS == 0)
-animate = false;
-else if (animMS < 0)
-animMS = 400;
-}
-else
-animMS = 400;
-var panelHeight;
-function calculatePanelHeight() {
-panel.style.maxHeight = '';
-var es   = window.getComputedStyle(panel),
-edis = es.display,
-epos = es.position,
-evis = es.visibility;
-panel.style.visibility = 'hidden';
-panel.style.position   = 'absolute';
-panel.style.display    = 'block';
-panelHeight = panel.offsetHeight + 'px';
-panel.style.display    = edis;
-panel.style.position   = epos;
-panel.style.visibility = evis;
-}
-function showPanel() {
-if (panelResetBorderTimerID) {
-clearTimeout(panelResetBorderTimerID);
-panelResetBorderTimerID = 0;
-}
-if (animate) {
-if (!panelInitialized) {
-panelInitialized = true;
-calculatePanelHeight();
-panel.style.transition = 'max-height ' + animMS +
-'ms ease-in-out';
-panel.style.overflowY  = 'hidden';
-panel.style.maxHeight  = '0';
-}
-setTimeout(function() {
-panel.style.maxHeight = panelHeight;
-panel.style.border    = panelBorder;
-}, 40);
-}
-panel.style.display = 'block';
-document.addEventListener('keydown',panelKeydown,true);
-document.addEventListener('click',panelClick,false);
-}
-var panelKeydown = function(event) {
-var key = event.which || event.keyCode;
-if (key == 27) {
-event.stopPropagation();
-panelToggle(true);
-}
-};
-var panelClick = function(event) {
-if (!panel.contains(event.target)) {
-panelToggle(true);
-}
-};
-function panelShowing() {
-if (animate) {
-return panel.style.maxHeight == panelHeight;
-}
-else {
-return panel.style.display == 'block';
-}
-}
-function hasChildren(element) {
-var childElement = element.firstChild;
-while (childElement) {
-if (childElement.nodeType == 1)
-return true;
-childElement = childElement.nextSibling;
-}
-return false;
-}
-window.addEventListener('resize',function(event) {
-panelInitialized = false;
-},false);
-hbButton.addEventListener('click',function(event) {
-event.stopPropagation();
-event.preventDefault();
-panelToggle(false);
-},false);
-function panelToggle(suppressAnimation) {
-if (panelShowing()) {
-document.removeEventListener('keydown',panelKeydown,true);
-document.removeEventListener('click',panelClick,false);
-if (animate) {
-if (suppressAnimation) {
-var transition = panel.style.transition;
-panel.style.transition = '';
-panel.style.maxHeight = '0';
-panel.style.border = 'none';
-setTimeout(function() {
-panel.style.transition = transition;
-}, 40);
-}
-else {
-panel.style.maxHeight = '0';
-panelResetBorderTimerID = setTimeout(function() {
-panel.style.border = 'none';
-panelResetBorderTimerID = 0;
-}, animMS);
-}
-}
-else {
-panel.style.display = 'none';
-}
-}
-else {
-if (!hasChildren(panel)) {
-var xhr = new XMLHttpRequest();
-xhr.onload = function() {
-var doc = xhr.responseXML;
-if (doc) {
-var sm = doc.querySelector("ul#sitemap");
-if (sm && xhr.status == 200) {
-panel.innerHTML = sm.outerHTML;
-showPanel();
-}
-}
-}
-xhr.open("GET", "/src/sitemap?popup");
-xhr.responseType = "document";
-xhr.send();
-}
-else {
-showPanel();
-}
-}
-}
-})();
-
-</script>
-<script nonce="11981b23fb5f2bd640d020650c3b7d4715c30a00ca321dfa">/* style.c:913 */
-function debugMsg(msg){
-var n = document.getElementById("debugMsg");
-if(n){n.textContent=msg;}
-}
-</script>
-<script nonce='11981b23fb5f2bd640d020650c3b7d4715c30a00ca321dfa'>
-/* hbmenu.js *************************************************************/
-(function() {
-var hbButton = document.getElementById("hbbtn");
-if (!hbButton) return;
-if (!document.addEventListener) return;
-var panel = document.getElementById("hbdrop");
-if (!panel) return;
-if (!panel.style) return;
-var panelBorder = panel.style.border;
-var panelInitialized = false;
-var panelResetBorderTimerID = 0;
-var animate = panel.style.transition !== null && (typeof(panel.style.transition) == "string");
-var animMS = panel.getAttribute("data-anim-ms");
-if (animMS) {
-animMS = parseInt(animMS);
-if (isNaN(animMS) || animMS == 0)
-animate = false;
-else if (animMS < 0)
-animMS = 400;
-}
-else
-animMS = 400;
-var panelHeight;
-function calculatePanelHeight() {
-panel.style.maxHeight = '';
-var es   = window.getComputedStyle(panel),
-edis = es.display,
-epos = es.position,
-evis = es.visibility;
-panel.style.visibility = 'hidden';
-panel.style.position   = 'absolute';
-panel.style.display    = 'block';
-panelHeight = panel.offsetHeight + 'px';
-panel.style.display    = edis;
-panel.style.position   = epos;
-panel.style.visibility = evis;
-}
-function showPanel() {
-if (panelResetBorderTimerID) {
-clearTimeout(panelResetBorderTimerID);
-panelResetBorderTimerID = 0;
-}
-if (animate) {
-if (!panelInitialized) {
-panelInitialized = true;
-calculatePanelHeight();
-panel.style.transition = 'max-height ' + animMS +
-'ms ease-in-out';
-panel.style.overflowY  = 'hidden';
-panel.style.maxHeight  = '0';
-}
-setTimeout(function() {
-panel.style.maxHeight = panelHeight;
-panel.style.border    = panelBorder;
-}, 40);
-}
-panel.style.display = 'block';
-document.addEventListener('keydown',panelKeydown,true);
-document.addEventListener('click',panelClick,false);
-}
-var panelKeydown = function(event) {
-var key = event.which || event.keyCode;
-if (key == 27) {
-event.stopPropagation();
-panelToggle(true);
-}
-};
-var panelClick = function(event) {
-if (!panel.contains(event.target)) {
-panelToggle(true);
-}
-};
-function panelShowing() {
-if (animate) {
-return panel.style.maxHeight == panelHeight;
-}
-else {
-return panel.style.display == 'block';
-}
-}
-function hasChildren(element) {
-var childElement = element.firstChild;
-while (childElement) {
-if (childElement.nodeType == 1)
-return true;
-childElement = childElement.nextSibling;
-}
-return false;
-}
-window.addEventListener('resize',function(event) {
-panelInitialized = false;
-},false);
-hbButton.addEventListener('click',function(event) {
-event.stopPropagation();
-event.preventDefault();
-panelToggle(false);
-},false);
-function panelToggle(suppressAnimation) {
-if (panelShowing()) {
-document.removeEventListener('keydown',panelKeydown,true);
-document.removeEventListener('click',panelClick,false);
-if (animate) {
-if (suppressAnimation) {
-var transition = panel.style.transition;
-panel.style.transition = '';
-panel.style.maxHeight = '0';
-panel.style.border = 'none';
-setTimeout(function() {
-panel.style.transition = transition;
-}, 40);
-}
-else {
-panel.style.maxHeight = '0';
-panelResetBorderTimerID = setTimeout(function() {
-panel.style.border = 'none';
-panelResetBorderTimerID = 0;
-}, animMS);
-}
-}
-else {
-panel.style.display = 'none';
-}
-}
-else {
-if (!hasChildren(panel)) {
-var xhr = new XMLHttpRequest();
-xhr.onload = function() {
-var doc = xhr.responseXML;
-if (doc) {
-var sm = doc.querySelector("ul#sitemap");
-if (sm && xhr.status == 200) {
-panel.innerHTML = sm.outerHTML;
-showPanel();
-}
-}
-}
-var url = hbButton.href + (hbButton.href.includes("?")?"&popup":"?popup")
-xhr.open("GET", url);
-xhr.responseType = "document";
-xhr.send();
-}
-else {
-showPanel();
-}
-}
-}
-})();
-/* fossil.bootstrap.js *************************************************************/
-"use strict";
-(function () {
-if(typeof window.CustomEvent === "function") return false;
-window.CustomEvent = function(event, params) {
-if(!params) params = {bubbles: false, cancelable: false, detail: null};
-const evt = document.createEvent('CustomEvent');
-evt.initCustomEvent( event, !!params.bubbles, !!params.cancelable, params.detail );
-return evt;
-};
-})();
-(function(global){
-const F = global.fossil;
-const timestring = function f(){
-if(!f.rx1){
-f.rx1 = /\.\d+Z$/;
-}
-const d = new Date();
-return d.toISOString().replace(f.rx1,'').split('T').join(' ');
-};
-const localTimeString = function ff(d){
-if(!ff.pad){
-ff.pad = (x)=>(''+x).length>1 ? x : '0'+x;
-}
-d || (d = new Date());
-return [
-d.getFullYear(),'-',ff.pad(d.getMonth()+1),
-'-',ff.pad(d.getDate()),
-' ',ff.pad(d.getHours()),':',ff.pad(d.getMinutes()),
-':',ff.pad(d.getSeconds())
-].join('');
-};
-F.message = function f(msg){
-const args = Array.prototype.slice.call(arguments,0);
-const tgt = f.targetElement;
-if(args.length) args.unshift(
-localTimeString()+':'
-);
-if(tgt){
-tgt.classList.remove('error');
-tgt.innerText = args.join(' ');
-}
-else{
-if(args.length){
-args.unshift('Fossil status:');
-console.debug.apply(console,args);
-}
-}
-return this;
-};
-F.message.targetElement =
-document.querySelector('#fossil-status-bar');
-if(F.message.targetElement){
-F.message.targetElement.addEventListener(
-'dblclick', ()=>F.message(), false
-);
-}
-F.error = function f(msg){
-const args = Array.prototype.slice.call(arguments,0);
-const tgt = F.message.targetElement;
-args.unshift(timestring(),'UTC:');
-if(tgt){
-tgt.classList.add('error');
-tgt.innerText = args.join(' ');
-}
-else{
-args.unshift('Fossil error:');
-console.error.apply(console,args);
-}
-return this;
-};
-F.encodeUrlArgs = function(obj,tgtArray,fakeEncode){
-if(!obj) return '';
-const a = (tgtArray instanceof Array) ? tgtArray : [],
-enc = fakeEncode ? (x)=>x : encodeURIComponent;
-let k, i = 0;
-for( k in obj ){
-if(i++) a.push('&');
-a.push(enc(k),'=',enc(obj[k]));
-}
-return a===tgtArray ? a : a.join('');
-};
-F.repoUrl = function(path,urlParams){
-if(!urlParams) return this.rootPath+path;
-const url=[this.rootPath,path];
-url.push('?');
-if('string'===typeof urlParams) url.push(urlParams);
-else if(urlParams && 'object'===typeof urlParams){
-this.encodeUrlArgs(urlParams, url);
-}
-return url.join('');
-};
-F.isObject = function(v){
-return v &&
-(v instanceof Object) &&
-('[object Object]' === Object.prototype.toString.apply(v) );
-};
-F.mergeLastWins = function(){
-var k, o, i;
-const n = arguments.length, rc={};
-for(i = 0; i < n; ++i){
-if(!F.isObject(o = arguments[i])) continue;
-for( k in o ){
-if(o.hasOwnProperty(k)) rc[k] = o[k];
-}
-}
-return rc;
-};
-F.hashDigits = function(hash,forUrl){
-const n = ('number'===typeof forUrl)
-? forUrl : F.config[forUrl ? 'hashDigitsUrl' : 'hashDigits'];
-return ('string'==typeof hash ? hash.substr(
-0, n
-) : hash);
-};
-F.onPageLoad = function(callback){
-window.addEventListener('load', callback, false);
-return this;
-};
-F.onDOMContentLoaded = function(callback){
-window.addEventListener('DOMContentLoaded', callback, false);
-return this;
-};
-F.shortenFilename = function(name){
-const a = name.split('/');
-if(a.length<=2) return name;
-while(a.length>2) a.shift();
-return '.../'+a.join('/');
-};
-F.page.addEventListener = function f(eventName, callback){
-if(!f.proxy){
-f.proxy = document.createElement('span');
-}
-f.proxy.addEventListener(eventName, callback, false);
-return this;
-};
-F.page.dispatchEvent = function(eventName, eventDetail){
-if(this.addEventListener.proxy){
-try{
-this.addEventListener.proxy.dispatchEvent(
-new CustomEvent(eventName,{detail: eventDetail})
-);
-}catch(e){
-console.error(eventName,"event listener threw:",e);
-}
-}
-return this;
-};
-F.page.setPageTitle = function(title){
-const t = document.querySelector('title');
-if(t) t.innerText = title;
-return this;
-};
-F.debounce = function f(func, wait, immediate) {
-var timeout;
-if(!wait) wait = f.$defaultDelay;
-return function() {
-const context = this, args = Array.prototype.slice.call(arguments);
-const later = function() {
-timeout = undefined;
-if(!immediate) func.apply(context, args);
-};
-const callNow = immediate && !timeout;
-clearTimeout(timeout);
-timeout = setTimeout(later, wait);
-if(callNow) func.apply(context, args);
-};
-};
-F.debounce.$defaultDelay = 500;
-})(window);
-/* fossil.dom.js *************************************************************/
-"use strict";
-(function(F){
-const argsToArray = (a)=>Array.prototype.slice.call(a,0);
-const isArray = (v)=>v instanceof Array;
-const dom = {
-create: function(elemType){
-return document.createElement(elemType);
-},
-createElemFactory: function(eType){
-return function(){
-return document.createElement(eType);
-};
-},
-remove: function(e){
-if(e.forEach){
-e.forEach(
-(x)=>x.parentNode.removeChild(x)
-);
-}else{
-e.parentNode.removeChild(e);
-}
-return e;
-},
-clearElement: function f(e){
-if(!f.each){
-f.each = function(e){
-if(e.forEach){
-e.forEach((x)=>f(x));
-return e;
-}
-while(e.firstChild) e.removeChild(e.firstChild);
-};
-}
-argsToArray(arguments).forEach(f.each);
-return arguments[0];
-},
-};
-dom.splitClassList = function f(str){
-if(!f.rx){
-f.rx = /(\s+|\s*,\s*)/;
-}
-return str ? str.split(f.rx) : [str];
-};
-dom.div = dom.createElemFactory('div');
-dom.p = dom.createElemFactory('p');
-dom.code = dom.createElemFactory('code');
-dom.pre = dom.createElemFactory('pre');
-dom.header = dom.createElemFactory('header');
-dom.footer = dom.createElemFactory('footer');
-dom.section = dom.createElemFactory('section');
-dom.span = dom.createElemFactory('span');
-dom.strong = dom.createElemFactory('strong');
-dom.em = dom.createElemFactory('em');
-dom.ins = dom.createElemFactory('ins');
-dom.del = dom.createElemFactory('del');
-dom.label = function(forElem, text){
-const rc = document.createElement('label');
-if(forElem){
-if(forElem instanceof HTMLElement){
-forElem = this.attr(forElem, 'id');
-}
-dom.attr(rc, 'for', forElem);
-}
-if(text) this.append(rc, text);
-return rc;
-};
-dom.img = function(src){
-const e = this.create('img');
-if(src) e.setAttribute('src',src);
-return e;
-};
-dom.a = function(href,label){
-const e = this.create('a');
-if(href) e.setAttribute('href',href);
-if(label) e.appendChild(dom.text(true===label ? href : label));
-return e;
-};
-dom.hr = dom.createElemFactory('hr');
-dom.br = dom.createElemFactory('br');
-dom.text = function(){
-return document.createTextNode(argsToArray(arguments).join(''));
-};
-dom.button = function(label,callback){
-const b = this.create('button');
-if(label) b.appendChild(this.text(label));
-if('function' === typeof callback){
-b.addEventListener('click', callback, false);
-}
-return b;
-};
-dom.textarea = function(){
-const rc = this.create('textarea');
-let rows, cols, readonly;
-if(1===arguments.length){
-if('boolean'===typeof arguments[0]){
-readonly = !!arguments[0];
-}else{
-rows = arguments[0];
-}
-}else if(arguments.length){
-rows = arguments[0];
-cols = arguments[1];
-readonly = arguments[2];
-}
-if(rows) rc.setAttribute('rows',rows);
-if(cols) rc.setAttribute('cols', cols);
-if(readonly) rc.setAttribute('readonly', true);
-return rc;
-};
-dom.select = dom.createElemFactory('select');
-dom.option = function(value,label){
-const a = arguments;
-var sel;
-if(1==a.length){
-if(a[0] instanceof HTMLElement){
-sel = a[0];
-}else{
-value = a[0];
-}
-}else if(2==a.length){
-if(a[0] instanceof HTMLElement){
-sel = a[0];
-value = a[1];
-}else{
-value = a[0];
-label = a[1];
-}
-}
-else if(3===a.length){
-sel = a[0];
-value = a[1];
-label = a[2];
-}
-const o = this.create('option');
-if(undefined !== value){
-o.value = value;
-this.append(o, this.text(label || value));
-}else if(undefined !== label){
-this.append(o, label);
-}
-if(sel) this.append(sel, o);
-return o;
-};
-dom.h = function(level){
-return this.create('h'+level);
-};
-dom.ul = dom.createElemFactory('ul');
-dom.li = function(parent){
-const li = this.create('li');
-if(parent) parent.appendChild(li);
-return li;
-};
-dom.createElemFactoryWithOptionalParent = function(childType){
-return function(parent){
-const e = this.create(childType);
-if(parent) parent.appendChild(e);
-return e;
-};
-};
-dom.table = dom.createElemFactory('table');
-dom.thead = dom.createElemFactoryWithOptionalParent('thead');
-dom.tbody = dom.createElemFactoryWithOptionalParent('tbody');
-dom.tfoot = dom.createElemFactoryWithOptionalParent('tfoot');
-dom.tr = dom.createElemFactoryWithOptionalParent('tr');
-dom.td = dom.createElemFactoryWithOptionalParent('td');
-dom.th = dom.createElemFactoryWithOptionalParent('th');
-dom.fieldset = function(legendText){
-const fs = this.create('fieldset');
-if(legendText){
-this.append(
-fs,
-(legendText instanceof HTMLElement)
-? legendText
-: this.append(this.legend(legendText))
-);
-}
-return fs;
-};
-dom.legend = function(legendText){
-const rc = this.create('legend');
-if(legendText) this.append(rc, legendText);
-return rc;
-};
-dom.append = function f(parent){
-const a = argsToArray(arguments);
-a.shift();
-for(let i in a) {
-var e = a[i];
-if(isArray(e) || e.forEach){
-e.forEach((x)=>f.call(this, parent,x));
-continue;
-}
-if('string'===typeof e
-|| 'number'===typeof e
-|| 'boolean'===typeof e
-|| e instanceof Error) e = this.text(e);
-parent.appendChild(e);
-}
-return parent;
-};
-dom.input = function(type){
-return this.attr(this.create('input'), 'type', type);
-};
-dom.checkbox = function(value, checked){
-const rc = this.input('checkbox');
-if(1===arguments.length && 'boolean'===typeof value){
-checked = !!value;
-value = undefined;
-}
-if(undefined !== value) rc.value = value;
-if(!!checked) rc.checked = true;
-return rc;
-};
-dom.radio = function(){
-const rc = this.input('radio');
-let name, value, checked;
-if(1===arguments.length && 'boolean'===typeof name){
-checked = arguments[0];
-name = value = undefined;
-}else if(2===arguments.length){
-name = arguments[0];
-if('boolean'===typeof arguments[1]){
-checked = arguments[1];
-}else{
-value = arguments[1];
-checked = undefined;
-}
-}else if(arguments.length){
-name = arguments[0];
-value = arguments[1];
-checked = arguments[2];
-}
-if(name) this.attr(rc, 'name', name);
-if(undefined!==value) rc.value = value;
-if(!!checked) rc.checked = true;
-return rc;
-};
-const domAddRemoveClass = function f(action,e){
-if(!f.rxSPlus){
-f.rxSPlus = /\s+/;
-f.applyAction = function(e,a,v){
-if(!e || !v
-) return;
-else if(e.forEach){
-e.forEach((E)=>E.classList[a](v));
-}else{
-e.classList[a](v);
-}
-};
-}
-var i = 2, n = arguments.length;
-for( ; i < n; ++i ){
-let c = arguments[i];
-if(!c) continue;
-else if(isArray(c) ||
-('string'===typeof c
-&& c.indexOf(' ')>=0
-&& (c = c.split(f.rxSPlus)))
-|| c.forEach
-){
-c.forEach((k)=>k ? f.applyAction(e, action, k) : false);
-}else if(c){
-f.applyAction(e, action, c);
-}
-}
-return e;
-};
-dom.addClass = function(e,c){
-const a = argsToArray(arguments);
-a.unshift('add');
-return domAddRemoveClass.apply(this, a);
-};
-dom.removeClass = function(e,c){
-const a = argsToArray(arguments);
-a.unshift('remove');
-return domAddRemoveClass.apply(this, a);
-};
-dom.toggleClass = function f(e,c){
-if(e.forEach){
-e.forEach((x)=>x.classList.toggle(c));
-}else{
-e.classList.toggle(c);
-}
-return e;
-};
-dom.hasClass = function(e,c){
-return (e && e.classList) ? e.classList.contains(c) : false;
-};
-dom.moveTo = function(dest,e){
-const n = arguments.length;
-var i = 1;
-const self = this;
-for( ; i < n; ++i ){
-e = arguments[i];
-this.append(dest, e);
-}
-return dest;
-};
-dom.moveChildrenTo = function f(dest,e){
-if(!f.mv){
-f.mv = function(d,v){
-if(d instanceof Array){
-d.push(v);
-if(v.parentNode) v.parentNode.removeChild(v);
-}
-else d.appendChild(v);
-};
-}
-const n = arguments.length;
-var i = 1;
-for( ; i < n; ++i ){
-e = arguments[i];
-if(!e){
-console.warn("Achtung: dom.moveChildrenTo() passed a falsy value at argument",i,"of",
-arguments,arguments[i]);
-continue;
-}
-if(e.forEach){
-e.forEach((x)=>f.mv(dest, x));
-}else{
-while(e.firstChild){
-f.mv(dest, e.firstChild);
-}
-}
-}
-return dest;
-};
-dom.replaceNode = function f(old,nu){
-var i = 1, n = arguments.length;
-++f.counter;
-try {
-for( ; i < n; ++i ){
-const e = arguments[i];
-if(e.forEach){
-e.forEach((x)=>f.call(this,old,e));
-continue;
-}
-old.parentNode.insertBefore(e, old);
-}
-}
-finally{
---f.counter;
-}
-if(!f.counter){
-old.parentNode.removeChild(old);
-}
-};
-dom.replaceNode.counter = 0;
-dom.attr = function f(e){
-if(2===arguments.length) return e.getAttribute(arguments[1]);
-const a = argsToArray(arguments);
-if(e.forEach){
-e.forEach(function(x){
-a[0] = x;
-f.apply(f,a);
-});
-return e;
-}
-a.shift();
-while(a.length){
-const key = a.shift(), val = a.shift();
-if(null===val || undefined===val){
-e.removeAttribute(key);
-}else{
-e.setAttribute(key,val);
-}
-}
-return e;
-};
-const enableDisable = function f(enable){
-var i = 1, n = arguments.length;
-for( ; i < n; ++i ){
-let e = arguments[i];
-if(e.forEach){
-e.forEach((x)=>f(enable,x));
-}else{
-e.disabled = !enable;
-}
-}
-return arguments[1];
-};
-dom.enable = function(e){
-const args = argsToArray(arguments);
-args.unshift(true);
-return enableDisable.apply(this,args);
-};
-dom.disable = function(e){
-const args = argsToArray(arguments);
-args.unshift(false);
-return enableDisable.apply(this,args);
-};
-dom.selectOne = function(x,origin){
-var src = origin || document,
-e = src.querySelector(x);
-if(!e){
-e = new Error("Cannot find DOM element: "+x);
-console.error(e, src);
-throw e;
-}
-return e;
-};
-dom.flashOnce = function f(e,howLongMs,afterFlashCallback){
-if(e.dataset.isBlinking){
-return;
-}
-if(2===arguments.length && 'function' ===typeof howLongMs){
-afterFlashCallback = howLongMs;
-howLongMs = f.defaultTimeMs;
-}
-if(!howLongMs || 'number'!==typeof howLongMs){
-howLongMs = f.defaultTimeMs;
-}
-e.dataset.isBlinking = true;
-const transition = e.style.transition;
-e.style.transition = "opacity "+howLongMs+"ms ease-in-out";
-const opacity = e.style.opacity;
-e.style.opacity = 0;
-setTimeout(function(){
-e.style.transition = transition;
-e.style.opacity = opacity;
-delete e.dataset.isBlinking;
-if(afterFlashCallback) afterFlashCallback();
-}, howLongMs);
-return e;
-};
-dom.flashOnce.defaultTimeMs = 400;
-dom.flashOnce.eventHandler = (event)=>dom.flashOnce(event.target)
-dom.flashNTimes = function(e,n,howLongMs,afterFlashCallback){
-const args = argsToArray(arguments);
-args.splice(1,1);
-if(arguments.length===3 && 'function'===typeof howLongMs){
-afterFlashCallback = howLongMs;
-howLongMs = args[1] = this.flashOnce.defaultTimeMs;
-}else if(arguments.length<3){
-args[1] = this.flashOnce.defaultTimeMs;
-}
-n = +n;
-const self = this;
-const cb = args[2] = function f(){
-if(--n){
-setTimeout(()=>self.flashOnce(e, howLongMs, f),
-howLongMs+(howLongMs*0.1));
-}else if(afterFlashCallback){
-afterFlashCallback();
-}
-};
-this.flashOnce.apply(this, args);
-return this;
-};
-dom.addClassBriefly = function f(e, className, howLongMs, afterCallback){
-if(arguments.length<4 && 'function'===typeof howLongMs){
-afterCallback = howLongMs;
-howLongMs = f.defaultTimeMs;
-}else if(arguments.length<3 || !+howLongMs){
-howLongMs = f.defaultTimeMs;
-}
-this.addClass(e, className);
-setTimeout(function(){
-dom.removeClass(e, className);
-if(afterCallback) afterCallback();
-}, howLongMs);
-return this;
-};
-dom.addClassBriefly.defaultTimeMs = 1000;
-dom.copyTextToClipboard = function(text){
-if( window.clipboardData && window.clipboardData.setData ){
-window.clipboardData.setData('Text',text);
-return true;
-}else{
-const x = document.createElement("textarea");
-x.style.position = 'fixed';
-x.value = text;
-document.body.appendChild(x);
-x.select();
-var rc;
-try{
-document.execCommand('copy');
-rc = true;
-}catch(err){
-rc = false;
-}finally{
-document.body.removeChild(x);
-}
-return rc;
-}
-};
-dom.copyStyle = function f(e, style){
-if(e.forEach){
-e.forEach((x)=>f(x, style));
-return e;
-}
-if(style){
-let k;
-for(k in style){
-if(style.hasOwnProperty(k)) e.style[k] = style[k];
-}
-}
-return e;
-};
-dom.effectiveHeight = function f(e){
-if(!e) return 0;
-if(!f.measure){
-f.measure = function callee(e, depth){
-if(!e) return;
-const m = e.getBoundingClientRect();
-if(0===depth){
-callee.top = m.top;
-callee.bottom = m.bottom;
-}else{
-callee.top = m.top ? Math.min(callee.top, m.top) : callee.top;
-callee.bottom = Math.max(callee.bottom, m.bottom);
-}
-Array.prototype.forEach.call(e.children,(e)=>callee(e,depth+1));
-if(0===depth){
-f.extra += callee.bottom - callee.top;
-}
-return f.extra;
-};
-}
-f.extra = 0;
-f.measure(e,0);
-return f.extra;
-};
-dom.parseHtml = function(){
-let childs, string, tgt;
-if(1===arguments.length){
-string = arguments[0];
-}else if(2==arguments.length){
-tgt = arguments[0];
-string  = arguments[1];
-}
-if(string){
-const newNode = new DOMParser().parseFromString(string, 'text/html');
-childs = newNode.documentElement.querySelector('body');
-childs = childs ? Array.prototype.slice.call(childs.childNodes, 0) : [];
-}else{
-childs = [];
-}
-return tgt ? this.moveTo(tgt, childs) : childs;
-};
-F.connectPagePreviewers = function f(selector,methodNamespace){
-if('string'===typeof selector){
-selector = document.querySelectorAll(selector);
-}else if(!selector.forEach){
-selector = [selector];
-}
-if(!methodNamespace){
-methodNamespace = F.page;
-}
-selector.forEach(function(e){
-e.addEventListener(
-'click', function(r){
-const eTo = '#'===e.dataset.fPreviewTo[0]
-? document.querySelector(e.dataset.fPreviewTo)
-: methodNamespace[e.dataset.fPreviewTo],
-eFrom = '#'===e.dataset.fPreviewFrom[0]
-? document.querySelector(e.dataset.fPreviewFrom)
-: methodNamespace[e.dataset.fPreviewFrom],
-asText = +(e.dataset.fPreviewAsText || 0);
-eTo.textContent = "Fetching preview...";
-methodNamespace[e.dataset.fPreviewVia](
-(eFrom instanceof Function ? eFrom.call(methodNamespace) : eFrom.value),
-function(r){
-if(eTo instanceof Function) eTo.call(methodNamespace, r||'');
-else if(!r){
-dom.clearElement(eTo);
-}else if(asText){
-eTo.textContent = r;
-}else{
-dom.parseHtml(dom.clearElement(eTo), r);
-}
-}
-);
-}, false
-);
-});
-return this;
-};
-return F.dom = dom;
-})(window.fossil);
-/* fossil.pikchr.js *************************************************************/
-(function(F){
-"use strict";
-const D = F.dom, P = F.pikchr = {};
-P.addSrcView = function f(svg){
-if(!f.hasOwnProperty('parentClick')){
-f.parentClick = function(ev){
-if(ev.altKey || ev.metaKey || ev.ctrlKey
-|| this.classList.contains('toggle')){
-this.classList.toggle('source');
-ev.stopPropagation();
-ev.preventDefault();
-}
-};
-};
-if(!svg) svg = 'svg.pikchr';
-if('string' === typeof svg){
-document.querySelectorAll(svg).forEach((e)=>f.call(this, e));
-return this;
-}else if(svg.forEach){
-svg.forEach((e)=>f.call(this, e));
-return this;
-}
-if(svg.dataset.pikchrProcessed){
-return this;
-}
-svg.dataset.pikchrProcessed = 1;
-const parent = svg.parentNode.parentNode;
-const srcView = parent ? svg.parentNode.nextElementSibling : undefined;
-if(!srcView || !srcView.classList.contains('pikchr-src')){
-return this;
-}
-parent.addEventListener('click', f.parentClick, false);
-return this;
-};
-})(window.fossil);
-</script>
-</body>
-</html>
