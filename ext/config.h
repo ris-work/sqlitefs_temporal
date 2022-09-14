@@ -279,3 +279,4 @@ typedef signed char i8;
 
 
 #endif /* _RC_COMPILE_ */
+#define INTERFACE 1
