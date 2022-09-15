@@ -17,12 +17,12 @@ nix = "0.25"
 
 [dependencies.rusqlite]
 version = "0.28.0"
-features = ["bundled", "blob"]
+features = ["bundled", "blob", "load_extension"]
 
 
 [dependencies.log]
 version="0.4"
-features=["release_max_level_off"]
+features=["release_max_level_info"]
 
 [dependencies.clap]
 version="3"
