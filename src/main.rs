@@ -106,7 +106,7 @@ fn main() {
     let db_syn_mode;
 
     match db_syn_mode_requested {
-        Some(S) => db_syn_mode = S,
+        Some(s) => db_syn_mode = s,
         None => db_syn_mode = "FULL",
     }
     let db_read_only: bool = matches.is_present("read_only");

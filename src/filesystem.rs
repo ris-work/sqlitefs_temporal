@@ -883,7 +883,6 @@ impl Filesystem for SqliteFs {
             for i in start_block..=end_block {
                 debug!("Writing, i = {}", i);
                 let mut block_data: Vec<u8> = Vec::with_capacity(block_size as usize);
-                let block_start_offset = offset % block_size;
                 let b_start_index = if i == start_block {
                     offset % block_size
                 } else {
