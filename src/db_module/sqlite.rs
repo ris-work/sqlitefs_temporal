@@ -426,6 +426,13 @@ impl Sqlite {
             time_recording,
         })
     }
+    fn load_extensions(conn: &Connection) -> Result<()>{
+        unsafe {
+            conn.load_extension("compress", None)?;
+            conn.load_extension("fossildelta", None)?;
+            Ok(())
+        }
+    }
 }
 
 impl DbModule for Sqlite {
