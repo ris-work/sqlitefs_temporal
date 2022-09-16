@@ -357,6 +357,7 @@ impl Sqlite {
             conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
         }
         conn.execute(&("PRAGMA main.synchronous=".to_string() + (syn_mode)), [])?;
+        Self::load_extensions(&conn)?;
         Ok(Sqlite {
             conn,
             read_only,
@@ -374,6 +375,7 @@ impl Sqlite {
             conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(true))?;
         }
         conn.execute(&("PRAGMA main.synchronous=".to_string() + (syn_mode)), [])?;
+        Self::load_extensions(&conn)?;
         Ok(Sqlite {
             conn,
             read_only,
