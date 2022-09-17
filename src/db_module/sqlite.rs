@@ -430,7 +430,7 @@ impl Sqlite {
     }
     fn load_extensions(conn: &Connection) -> Result<()>{
         unsafe {
-            //conn.load_extension("ext/compress", None)?;
+            conn.load_extension("ext/compress", None)?;
             conn.load_extension("ext/fossildelta", None)?;
             Ok(())
         }
