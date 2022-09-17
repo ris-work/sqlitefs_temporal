@@ -630,7 +630,7 @@ impl DbModule for Sqlite {
                 CREATE TRIGGER audit_update_data AFTER UPDATE on data \
                 BEGIN \
                     INSERT INTO data_audit VALUES (NULL, strftime('%Y-%m-%dT%H:%M:%f', 'now', 'utc'), 'UPDATE', \
-                    NEW.file_id, NEW.block_num, delta_create(OLD.data, NEW.data) \
+                    NEW.file_id, NEW.block_num, compress(delta_create(OLD.data, NEW.data)) \
                     ); \
                 END";
                 let res_audit_trigger_update =
