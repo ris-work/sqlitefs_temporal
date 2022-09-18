@@ -1209,9 +1209,9 @@ impl DbModule for Sqlite {
                 |row| row.get(0),
             )?;
             tx.execute(
-                "REPLACE INTO data \
+                "INSERT INTO data \
             (file_id, block_num, data)
-            VALUES($1, $2, $3)",
+            VALUES($1, $2, $3) ON CONFLICT (file_id, block_num) DO UPDATE SET data=excluded.data",
                 params![inode, block, data],
             )?;
             if size > db_size {
