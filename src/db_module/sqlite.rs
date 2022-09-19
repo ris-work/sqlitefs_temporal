@@ -6,6 +6,7 @@ use fuse::FileType;
 use rusqlite;
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection, MappedRows, Statement};
+use std::collections::VecDeque;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -281,9 +282,41 @@ fn get_max_creation_seq(tx: &Connection) -> Result<Vec<BlockRelevantFrom>> {
     })?;
     let mut BRFs: Vec<BlockRelevantFrom> = vec![];
     for BRF in rows {
+        debug! {"BRF: {:?}", BRF};
         BRFs.push(BRF?);
     }
     Ok(BRFs)
+}
+fn apply_diffs(tx: &Connection) -> Result<()> {
+    let BRFs: Vec<BlockRelevantFrom> = get_max_creation_seq(&tx)?;
+    for BRF in BRFs {
+        let sql = "SELECT data FROM data_audit WHERE file_id=$1 AND block_num=$2 AND seq > $3 ORDER BY seq";
+        let mut stmt = tx.prepare(sql)?;
+        let mut rows = stmt.query_map([BRF.file_id, BRF.block_num, BRF.seq], |row| {
+            let data: Vec<u8>;
+            data = row.get(0)?;
+            Ok(data)
+        })?;
+        let mut data_and_patches: VecDeque<Vec<u8>> = VecDeque::from(vec![]);
+        for data_or_patch in rows {
+            data_and_patches.push_back(data_or_patch?)
+        }
+        let mut patched_data: Vec<u8> =
+            data_and_patches
+                .pop_front()
+                .ok_or(Error::from(ErrorKind::Undefined {
+                    description: "NULL".to_string(),
+                }))?;
+        for patch in data_and_patches {
+            let sql = "SELECT delta_apply($1, uncompress($2))";
+            let mut stmt = tx.prepare(sql)?;
+            let patched_data = stmt.query_map([&patched_data, &patch], |row| {
+                let patched_data_seg: Vec<u8> = row.get(0)?;
+                Ok(patched_data_seg)
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn check_directory_is_empty_local(inode: u32, tx: &Connection) -> Result<bool> {
