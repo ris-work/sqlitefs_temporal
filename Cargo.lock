@@ -205,6 +205,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fossil-delta"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d63fa59e3d0144c1b15fc677e1fb94a1a21cff57d20b439bc91d81d40129078f"
+
+[[package]]
 name = "fuse"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -521,6 +527,7 @@ dependencies = [
  "clap",
  "env_logger",
  "failure",
+ "fossil-delta",
  "fuse",
  "libc",
  "log 0.4.17",
