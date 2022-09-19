@@ -5,7 +5,7 @@ use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
 use fuse::FileType;
 use rusqlite;
 use rusqlite::types::ToSql;
-use rusqlite::{params, Connection, Statement};
+use rusqlite::{params, Connection, MappedRows, Statement};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -263,6 +263,28 @@ fn delete_sub_dentry(id: u32, tx: &Connection) -> Result<()> {
     tx.execute(sql, params![id])?;
     Ok(())
 }
+#[derive(Debug)]
+struct BlockRelevantFrom {
+    file_id: u32,
+    block_num: u32,
+    seq: u32,
+}
+fn get_max_creation_seq(tx: &Connection) -> Result<Vec<BlockRelevantFrom>> {
+    let sql = "SELECT file_id, block_num, max(seq) FROM data_audit GROUP BY file_id, block_num HAVING TG_OP<>'DELETE'";
+    let mut stmt = tx.prepare(sql)?;
+    let rows = stmt.query_map([], |row| {
+        Ok(BlockRelevantFrom {
+            file_id: row.get(0)?,
+            block_num: row.get(1)?,
+            seq: row.get(2)?,
+        })
+    })?;
+    let mut BRFs: Vec<BlockRelevantFrom> = vec![];
+    for BRF in rows {
+        BRFs.push(BRF?);
+    }
+    Ok(BRFs)
+}
 
 fn check_directory_is_empty_local(inode: u32, tx: &Connection) -> Result<bool> {
     let sql = "SELECT name FROM dentry where parent_id=$1";
@@ -428,7 +450,7 @@ impl Sqlite {
             time_recording,
         })
     }
-    fn load_extensions(conn: &Connection) -> Result<()>{
+    fn load_extensions(conn: &Connection) -> Result<()> {
         unsafe {
             conn.load_extension("ext/compress", None)?;
             conn.load_extension("ext/fossildelta", None)?;
