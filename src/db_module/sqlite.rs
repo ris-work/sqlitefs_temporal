@@ -290,6 +290,7 @@ fn get_max_creation_seq(tx: &Connection) -> Result<Vec<BlockRelevantFrom>> {
 fn apply_diffs(tx: &Connection) -> Result<()> {
     let BRFs: Vec<BlockRelevantFrom> = get_max_creation_seq(&tx)?;
     for BRF in BRFs {
+        debug! {"BRF: file_id {}, block_num {}, seq {}.", BRF.file_id, BRF.block_num, BRF.seq};
         let sql = "SELECT data FROM data_audit WHERE file_id=$1 AND block_num=$2 AND seq > $3 ORDER BY seq";
         let mut stmt = tx.prepare(sql)?;
         let mut rows = stmt.query_map([BRF.file_id, BRF.block_num, BRF.seq], |row| {
@@ -301,6 +302,7 @@ fn apply_diffs(tx: &Connection) -> Result<()> {
         for data_or_patch in rows {
             data_and_patches.push_back(data_or_patch?)
         }
+        debug! {"Found... file_id {}, block_num {}, seq {}: entries{}.", BRF.file_id, BRF.block_num, BRF.seq, data_and_patches.len()};
         let mut patched_data: Vec<u8> =
             data_and_patches
                 .pop_front()
@@ -308,6 +310,7 @@ fn apply_diffs(tx: &Connection) -> Result<()> {
                     description: "NULL".to_string(),
                 }))?;
         for patch in data_and_patches {
+            debug! {"Patching... file_id {}, block_num {}, seq {}.", BRF.file_id, BRF.block_num, BRF.seq};
             let sql = "SELECT delta_apply($1, uncompress($2))";
             let mut stmt = tx.prepare(sql)?;
             let patched_data = stmt.query_map([&patched_data, &patch], |row| {
