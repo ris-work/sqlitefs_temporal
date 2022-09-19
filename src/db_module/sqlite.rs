@@ -330,6 +330,14 @@ fn apply_diffs(tx: &Connection) -> Result<()> {
                     debug! {"{:?}", E}
                 }
             }
+            let sql = "CREATE TABLE IF NOT EXISTS bdata(\
+                    file_id int,\
+                    block_num int,\
+                    data blob,\
+                    )";
+            //foreign key (file_id) references metadata(id) on delete cascade,\
+            //primary key (file_id, block_num) \
+            tx.execute(sql, params![])?;
         }
         //BIG: debug! {"data: {:?}", patched_data};
     }
