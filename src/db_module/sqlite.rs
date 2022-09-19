@@ -309,10 +309,12 @@ fn apply_diffs(tx: &Connection) -> Result<()> {
                 .ok_or(Error::from(ErrorKind::Undefined {
                     description: "Delta calculation failed.".to_string(),
                 }))?;
-        for patch in data_and_patches {
+        debug! {"Genesis:: {:?}", patched_data};
+        for patch in data_and_patches.into_iter() {
             debug! {"Patching... file_id {}, block_num {}, seq {}.", BRF.file_id, BRF.block_num, BRF.seq};
             let sql = "SELECT delta_apply($1, uncompress($2))";
             let mut stmt = tx.prepare(sql)?;
+            debug! {"Patch: {:?}", patch};
             let try_patch_data = stmt
                 .query_map([&patched_data, &patch], |row| {
                     let patched_data_seg: Vec<u8> = row.get(0)?;
