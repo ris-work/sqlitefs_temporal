@@ -291,7 +291,7 @@ fn apply_diffs(tx: &Connection) -> Result<()> {
     let BRFs: Vec<BlockRelevantFrom> = get_max_creation_seq(&tx)?;
     for BRF in BRFs {
         debug! {"BRF: file_id {}, block_num {}, seq {}.", BRF.file_id, BRF.block_num, BRF.seq};
-        let sql = "SELECT data FROM data_audit WHERE file_id=$1 AND block_num=$2 AND seq > $3 ORDER BY seq";
+        let sql = "SELECT data FROM data_audit WHERE file_id=$1 AND block_num=$2 AND seq >= $3 ORDER BY seq";
         let mut stmt = tx.prepare(sql)?;
         let mut rows = stmt.query_map([BRF.file_id, BRF.block_num, BRF.seq], |row| {
             let data: Vec<u8>;
