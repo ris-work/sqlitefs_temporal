@@ -307,17 +307,29 @@ fn apply_diffs(tx: &Connection) -> Result<()> {
             data_and_patches
                 .pop_front()
                 .ok_or(Error::from(ErrorKind::Undefined {
-                    description: "NULL".to_string(),
+                    description: "Delta calculation failed.".to_string(),
                 }))?;
         for patch in data_and_patches {
             debug! {"Patching... file_id {}, block_num {}, seq {}.", BRF.file_id, BRF.block_num, BRF.seq};
             let sql = "SELECT delta_apply($1, uncompress($2))";
             let mut stmt = tx.prepare(sql)?;
-            let patched_data = stmt.query_map([&patched_data, &patch], |row| {
-                let patched_data_seg: Vec<u8> = row.get(0)?;
-                Ok(patched_data_seg)
-            })?;
+            let try_patch_data = stmt
+                .query_map([&patched_data, &patch], |row| {
+                    let patched_data_seg: Vec<u8> = row.get(0)?;
+                    Ok(patched_data_seg)
+                })?
+                .nth(0)
+                .ok_or(Error::from(ErrorKind::Undefined {
+                    description: "Delta calculation failed.".to_string(),
+                }))?;
+            match try_patch_data {
+                Ok(v) => patched_data = v,
+                Err(E) => {
+                    debug! {"{:?}", E}
+                }
+            }
         }
+        debug! {"data: {:?}", patched_data};
     }
     Ok(())
 }
@@ -811,6 +823,7 @@ impl DbModule for Sqlite {
                 add_dentry(root_dir, &self.conn)?;
             }
         }
+        apply_diffs(&self.conn);
         Ok(())
     }
 
