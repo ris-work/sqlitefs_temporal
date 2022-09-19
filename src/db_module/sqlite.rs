@@ -271,7 +271,7 @@ struct BlockRelevantFrom {
     seq: u32,
 }
 fn get_max_creation_seq(tx: &Connection) -> Result<Vec<BlockRelevantFrom>> {
-    let sql = "SELECT file_id, block_num, max(seq) FROM data_audit GROUP BY file_id, block_num HAVING TG_OP<>'DELETE'";
+    let sql = "SELECT cr_seqs.file_id, cr_seqs.block_num, cr_seqs.cr_seq, de_seq FROM (SELECT file_id, block_num, max(seq) as cr_seq FROM data_audit WHERE TG_OP='INSERT' GROUP BY file_id, block_num) as cr_seqs LEFT JOIN (SELECT file_id, block_num, max(seq) as de_seq FROM data_audit WHERE TG_OP='DELETE' GROUP BY file_id, block_num) as de_seqs ON cr_seqs.file_id=de_seqs.file_id AND cr_seqs.block_num=de_seqs.block_num WHERE cr_seq > de_seq OR de_seq IS NULL";
     let mut stmt = tx.prepare(sql)?;
     let rows = stmt.query_map([], |row| {
         Ok(BlockRelevantFrom {
