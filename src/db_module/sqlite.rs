@@ -288,6 +288,17 @@ fn get_max_creation_seq(tx: &Connection) -> Result<Vec<BlockRelevantFrom>> {
     Ok(BRFs)
 }
 fn apply_diffs(tx: &Connection) -> Result<()> {
+    let drop_sql = "DROP TABLE IF EXISTS bdata";
+    tx.execute(drop_sql, params![])?;
+    let cr_sql = "CREATE TABLE IF NOT EXISTS bdata(\
+                    file_id int,\
+                    block_num int,\
+                    data blob,\
+                    primary key (file_id, block_num) \
+                    )";
+    //foreign key (file_id) references metadata(id) on delete cascade,\
+    //primary key (file_id, block_num) \
+    tx.execute(cr_sql, params![])?;
     let BRFs: Vec<BlockRelevantFrom> = get_max_creation_seq(&tx)?;
     for BRF in BRFs {
         debug! {"BRF: file_id {}, block_num {}, seq {}.", BRF.file_id, BRF.block_num, BRF.seq};
@@ -330,15 +341,12 @@ fn apply_diffs(tx: &Connection) -> Result<()> {
                     debug! {"{:?}", E}
                 }
             }
-            let sql = "CREATE TABLE IF NOT EXISTS bdata(\
-                    file_id int,\
-                    block_num int,\
-                    data blob,\
-                    )";
-            //foreign key (file_id) references metadata(id) on delete cascade,\
-            //primary key (file_id, block_num) \
-            tx.execute(sql, params![])?;
         }
+        let insert_sql = "INSERT INTO bdata(file_id, block_num, data) VALUES($1, $2, $3)";
+        tx.execute(
+            insert_sql,
+            params![BRF.file_id, BRF.block_num, patched_data],
+        )?;
         //BIG: debug! {"data: {:?}", patched_data};
     }
     Ok(())
