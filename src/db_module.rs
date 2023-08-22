@@ -1,9 +1,9 @@
 pub mod sqlite;
-use std::time::SystemTime;
 use crate::sqerror::Result;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use fuse::{FileAttr, FileType};
+use std::time::SystemTime;
 use time::Timespec;
-use chrono::{DateTime, Utc, NaiveDateTime};
 //use std::string;
 
 pub trait DbModule {
@@ -11,7 +11,6 @@ pub trait DbModule {
     fn init(&mut self) -> Result<()>;
     /// Get metadata. If not found, return None
     fn get_inode(&self, inode: u32) -> Result<Option<DBFileAttr>>;
-    fn get_inode_at_time(&self, inode: u32, time: String) -> Result<Option<DBFileAttr>>;
     /// Add a file or a directory.
     /// Update atime, mtime, ctime. Update mtime and ctime of the parent directory.
     fn add_inode_and_dentry(&mut self, parent: u32, name: &str, attr: &DBFileAttr) -> Result<u32>;
@@ -22,7 +21,6 @@ pub trait DbModule {
     fn delete_inode_if_noref(&mut self, inode: u32) -> Result<()>;
     /// Get directory entries
     fn get_dentry(&self, inode: u32) -> Result<Vec<DEntry>>;
-    fn get_dentry_at_time(&self, inode: u32, time: String) -> Result<Vec<DEntry>>;
     /// Add a new directory entry which is hard link
     /// Update mtime, Update mtime and ctime of the parent directory.
     fn link_dentry(&mut self, inode: u32, parent: u32, name: &str) -> Result<DBFileAttr>;
@@ -31,28 +29,31 @@ pub trait DbModule {
     fn delete_dentry(&mut self, parent: u32, name: &str) -> Result<u32>;
     /// Move dentry to another parent or name. Return inode number if a new file is overwrote.
     /// Update ctime, and mtime and ctime of the parent directories.
-    fn move_dentry(&mut self, parent: u32, name: &str, new_parent: u32, new_name: &str) -> Result<Option<u32>>;
+    fn move_dentry(
+        &mut self,
+        parent: u32,
+        name: &str,
+        new_parent: u32,
+        new_name: &str,
+    ) -> Result<Option<u32>>;
     /// check a directory if it is empty.
     fn check_directory_is_empty(&self, inode: u32) -> Result<bool>;
     /// lookup a directory entry table and get a file attribute.
     /// If not found, return None.
     /// Update atime.
     fn lookup(&mut self, parent: u32, name: &str) -> Result<Option<DBFileAttr>>;
-    fn lookup_at_time(&mut self, parent: u32, name: &str, time: String) -> Result<Option<DBFileAttr>>;
     /// Read data from a whole block.
     /// Update atime.
     fn get_data(&mut self, inode: u32, block: u32, length: u32) -> Result<Vec<u8>>;
-    fn get_data_at_time(&mut self, inode: u32, block: u32, length: u32, time: String) -> Result<Vec<u8>>;
     /// Write data into a whole block.
     /// Update mtime and ctime.
-    fn write_data(&mut self, inode:u32, block: u32, data: &[u8], size: u32) -> Result<()>;
+    fn write_data(&mut self, inode: u32, block: u32, data: &[u8], size: u32) -> Result<()>;
     /// Release all data related to an inode number.
     fn release_data(&self, inode: u32) -> Result<()>;
     /// Delete all inodes which nlink is 0.
     fn delete_all_noref_inode(&mut self) -> Result<()>;
     /// Get block size of the filesystem
     fn get_db_block_size(&self) -> u32;
-    fn get_db_block_size_at_time(&self, time: String) -> u32;
     /// Set xattr value.
     fn set_xattr(&mut self, inode: u32, key: &str, value: &[u8]) -> Result<()>;
     /// Get xattr value.
@@ -100,15 +101,18 @@ pub struct DBFileAttr {
 impl DBFileAttr {
     fn timespec_from(&self, st: &SystemTime) -> Timespec {
         if let Ok(dur_since_epoch) = st.duration_since(std::time::UNIX_EPOCH) {
-            Timespec::new(dur_since_epoch.as_secs() as i64,
-                          dur_since_epoch.subsec_nanos() as i32)
+            Timespec::new(
+                dur_since_epoch.as_secs() as i64,
+                dur_since_epoch.subsec_nanos() as i32,
+            )
         } else {
             Timespec::new(0, 0)
         }
     }
 
     pub fn datetime_from(&self, ts: &Timespec) -> SystemTime {
-        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(ts.sec, ts.nsec as u32), Utc);
+        let dt =
+            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(ts.sec, ts.nsec as u32), Utc);
         SystemTime::from(dt)
     }
 
