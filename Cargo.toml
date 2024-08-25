@@ -14,16 +14,15 @@ failure = "0.1"
 env_logger = "0.9"
 time = "0.1"
 nix = "0.25"
-fossil-delta = "0.1.6"
 
 [dependencies.rusqlite]
 version = "0.28.0"
-features = ["bundled", "blob", "load_extension"]
+features = ["bundled", "blob"]
 
 
 [dependencies.log]
 version="0.4"
-features=["release_max_level_info"]
+features=["release_max_level_off"]
 
 [dependencies.clap]
 version="3"
