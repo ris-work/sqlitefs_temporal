@@ -2,7 +2,7 @@
 
 ## About
 
-sqlite-fs allows Linux and MacOS to mount a sqlite database file as a normal filesystem.
+sqlite-temporal-fs allows Linux, FreeBSD, NetBSD and MacOS to mount a sqlite database file as a temporal filesystem that you can reverse to any time in the past.
 
 ## Requirements
 
@@ -54,3 +54,23 @@ Hello world!
 - [] File lock operations
 - [] Strict error handling
 
+### Tuneables
+
+- [x] WAL mode
+- [x] Syncing mode
+- [x] No atime
+- [x] MEMORY
+
+### Temporal features  
+
+- [x] Mount as at a particular time in the past  
+- [] Re-genesis (garbage-collect from the past)  
+- [x] Optional delta-diff or compression  
+
+### Platforms  
+
+- [x] Linux support  
+- [x] FreeBSD support    
+- [x] NetBSD support (if it doesn't work, manually patch the Rust FUSE client)  
+- [] OpenBSD support
+- [] Microsoft Windows (R) support
